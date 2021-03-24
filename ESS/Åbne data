@@ -501,3 +501,208 @@ ess <- ess %>%
   select(-starts_with("inw"))
 rm(list = apropos("ess_"))
 ```
+
+
+```{r}
+ess <- ess %>% mutate(int.day = case_when(essround<3 ~ inwdd,
+                                          essround>2 ~ inwdds)) %>%
+              mutate(int.month = case_when(essround<3 ~ inwmm,
+                                          essround>2 ~ inwmms)) %>%
+              mutate(int.year = case_when(essround<3 ~ inwyr,
+                                          essround>2 ~ inwyys))
+ess <- ess %>% mutate(int.date = as.Date(paste(int.year, int.month, int.day, sep="-")))
+```
+
+
+
+
+```{r}
+write.csv(ess, "ess_cumulative_core.csv")
+```
+
+
+```{r}
+# EDUCATION:
+# Let's create a dummy variable indicating that the respondent
+# has attained a bachelor's degree or above
+# ESS rounds 1-4 use the "edulvla" variable
+xtabs(~ essround + edulvla, data=ess)
+# ESS rounds 5 onwards use a more detailed "edulvlb" variable
+xtabs(~ essround + edulvlb, data=ess)
+```
+
+```{r}
+# First let's code "other" as missing
+ess$edulvla[ess$edulvla==55] <- NA # "other"
+ess$edulvlb[ess$edulvlb==5555] <- NA # "other"
+
+# now create dummy for bachelors degree
+# for more details on the categories: https://www.europeansocialsurvey.org/docs/round8/survey/ESS8_data_protocol_e01_4.pdf
+ess$educ.ba <- ifelse(ess$essround<5 & ess$edulvla==5, 1,
+                      ifelse(ess$essround>=5 & ess$edulvlb>600, 1, 0))
+tabl(ess$educ.ba)
+```
+```{r}
+# gender
+tabl(ess$gndr)
+ess$female <- ifelse(ess$gndr==1, 0, ifelse(ess$gndr==2, 1, NA))
+tabl(ess$female)
+
+# age
+table(ess$agea)
+ess$age <- ess$agea
+ess$age[ess$agea==999] <- NA
+table(ess$age)
+ess$age.group <- cut(ess$age, breaks=c(0,20,35,50,65,75, 120))
+
+# year
+ess$essround.year <- NA
+ess$essround.year[ess$essround==1] <- 2002
+ess$essround.year[ess$essround==2] <- 2004
+ess$essround.year[ess$essround==3] <- 2006
+ess$essround.year[ess$essround==4] <- 2008
+ess$essround.year[ess$essround==5] <- 2010
+ess$essround.year[ess$essround==6] <- 2012
+ess$essround.year[ess$essround==7] <- 2014
+ess$essround.year[ess$essround==8] <- 2016
+ess$essround.year[ess$essround==9] <- 2018
+
+```
+
+
+```{r}
+ess$party.vote.ess <- ifelse(is.na(ess$party.vote.num), NA,
+                             paste0(ess$cntry, "-", ess$essround, "-", ess$party.vote.num))
+```
+
+```{r}
+# load the ESS-Partyfacts extended crosswalk
+cw_ess_pf <- read_csv(url("https://raw.githubusercontent.com/sophieehill/ess-partyfacts-crosswalk/master/ess-partyfacts-extended.csv"))
+cw_ess_pf$party.vote.ess <- paste0(cw_ess_pf$cntry, "-", cw_ess_pf$essround, "-", cw_ess_pf$ess_id)
+cw_ess_pf <- cw_ess_pf %>% select(party.vote.ess, partyfacts_id, partyfacts_name)
+```
+
+
+```{r}
+# merge partyfacts IDs into main dataset
+ess <- left_join(ess, cw_ess_pf, by=c("party.vote.ess"))
+
+
+# now load the Partyfacts-External crosswalk and select the Manifesto dataset
+# this lets us link those partyfacts IDs to *other* datasets
+cw_pf <- read_csv(url("https://partyfacts.herokuapp.com/download/external-parties-csv/"))
+cw_pf$dataset_party_id <- as.numeric(as.character(cw_pf$dataset_party_id))
+cw_pf_cmp <- cw_pf %>% filter(dataset_key == "manifesto") %>% select(partyfacts_id, dataset_party_id)
+
+names(cw_pf_cmp) <- c("partyfacts_id", "cmp_id")
+
+ess <- left_join(ess, cw_pf_cmp, by=c("partyfacts_id"))
+
+# In order to merge in election-level variables (e.g. measures of a party's manifesto for a particular election), we need to match up the ESS dates to the most recent election
+# Some ESS fieldwork occurs over an election period, meaning that respondents within the same country-round would be referring to different elections when they recall their "past vote"
+# First, let's import the dataset from Denis Cohen's github: https://github.com/denis-cohen/ess-election-dates
+ess_dates <- read_csv(url("https://raw.githubusercontent.com/denis-cohen/ess-election-dates/master/ess_election_dates.csv"))
+# select needed vars
+ess_dates <- ess_dates %>% select(cntry, essround, recent_election, recent_election_split1)
+# merge in
+ess <- left_join(ess, ess_dates, by=c("cntry", "essround"))
+
+```
+
+```{r}
+ess <- ess %>% mutate(ref.election = case_when(int.date > recent_election ~ recent_election,
+                                               int.date <= recent_election ~ recent_election_split1))
+#tabl(ess$ref.election)
+# if the specific date is missing let's just match up using the country-year pair
+```
+
+
+```{r}
+# Merge with CMP data to get party families
+# Download latest CMP dataset
+# (Use API or just load "cmp.csv")
+library(manifestoR)
+# set API key
+mp_setapikey(key = "70af9d9d7f76a3d66d41142debe969f6")
+# download latest dataset
+cmp <- as.data.frame(mp_maindataset())
+# save for replicability
+# write.csv(cmp, "cmp_main_2020.csv")
+head(cmp)
+tabl(cmp$edate)
+summary(cmp$party)
+# create election year variable
+cmp$election.year <- as.numeric(as.character(substr(cmp$date, 1, 4)))
+# create econ l-r and lib-auth scales, following Bakker & Hobolt (2013)
+cmp <- cmp %>% mutate(econlr = scale_logit(data=cmp,
+                                           pos=c("per401", "per402", "per407", "per505", 
+                                                 "per507", "per410", "per414", "per702"), 
+                                           neg=c("per403", "per404", "per406", "per504", 
+                                                 "per506", "per413", "per412", "per701", 
+                                                 "per405", "per409", "per415", "per503"),
+                                           zero_offset = 0.5))
+
+cmp <- cmp %>% mutate(econlr.sal = (per401 + per402 + per407 + per505 + per507 + per410 + per414 + per702) +
+                        (per403 + per404 + per406 + per504 + per506 + per413 + per412 + per701 + per405 + per409 + per415 + per503))
+
+
+summary(cmp$econlr.sal)
+
+cmp <- cmp %>% mutate(auth = scale_logit(data=cmp,
+                                         pos=c("per305", "per601", "per603", "per605", 
+                                               "per608", "per606"), 
+                                         neg=c("per501", "per602", "per604", "per502", 
+                                               "per607", "per416", "per705", "per706", 
+                                               "per201", "per202"),
+                                         zero_offset = 0.5))
+
+cmp <- cmp %>% mutate(auth.sal = (per305 + per601 + per603 + per605 + per608  + per606) +
+                        (per501 + per602 + per604 + per502 + per607 + per416 + per705 + per706 + per201 + per202))
+# select party code, party family
+# as well as party-election specific variables like right/left coding of the manifesto
+cmp.x <- cmp %>% select(party, parfam, election.year, edate, rile, 
+                        econlr, econlr.sal, auth, auth.sal)
+names(cmp.x)[1:2] <- c("cmp_id", "cmp_parfam") # relabel for clarity
+head(cmp.x)
+ess$election.year <- as.numeric(as.character(substr(ess$ref.election, 1, 4)))
+tabl(ess$election.year)
+# match up by election year
+# N.B. this won't work for cases where two elections happen in the same year, and ESS fieldwork window covers the 2nd election
+ess <- left_join(ess, cmp.x, by=c("cmp_id", "election.year"))
+# alternatively we could match on exact election date
+# cmp.x$election.date <- as.Date(cmp.x$edate)
+# ess$election.date <- as.Date(ess$ref.election)
+# ess <- left_join(ess, cmp.x, by=c("cmp_id", "election.date"))
+
+# create left vote recall based on party families
+# 10 = ecological
+# 20 = socialist or other left
+# 30 = social democratic
+ess$vote.left <- ifelse(ess$cmp_parfam==10 | ess$cmp_parfam==20 | ess$cmp_parfam==30, 1, 0)
+```
+
+
+```{r}
+names(ess)
+```
+
+
+
+der er problem med idno variable, da flere variabler har samme id. derfor laver jeg et nyt
+```{r}
+ess <- ess%>%
+  mutate(id = row_number())
+```
+
+
+filter data, så jeg kun medbring data fra land, som der er trussel data for
+```{r}
+ess_cntry <- ess %>%
+  filter(cntry %in% c("NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT", "FI", "GR", "CH", "IE", "BE"))
+```
+
+
+```{r}
+write_csv(ess, "ess_all.csv")
+write_csv(ess_cntry, "ess_cntry.csv")
+```
