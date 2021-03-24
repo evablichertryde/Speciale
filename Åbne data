@@ -1,0 +1,503 @@
+---
+title: "åbne data - ess"
+output: html_notebook
+---
+Kode der viser hvordan jeg åbner ess data. Tilpasset kode fra Sophie Hill:
+https://github.com/sophieehill/ess-cumulative/blob/c71e74a8b299dd2d53e000a5e30e102c651247ac/build_cumulative_core_ESS.R
+build_cumulative_core_ESS.R
+
+Derfor er koden både på engelsk og dansk. I denne kode del henter jeg og åbne ESS data fra alle 9 runder. For at gøre dette kræver det en bruger hos ESS. Jeg har fjernet infomation om min egne brugernavn og adgangskode fra koden
+
+```{r}
+# load packages
+library(tidyverse) # for data wrangling
+library(essurvey) # to download ESS data
+# if necessary, install with this command:
+# devtools::install_github("ropensci/essurvey")
+library(sjlabelled) # to convert party vote choice into names
+library(data.table) # for the "fread" function to quickly load large csv files
+```
+
+```{r}
+# useful function
+tabl <- function(...) table(..., useNA='ifany')
+
+# IN ORDER TO DOWNLOAD DATA FROM THE ESS USING THE ESSURVEY PACKAGE,
+# YOU NEED TO REGISTER YOUR EMAIL WITH THE ESS:
+# you can do that here: http://www.europeansocialsurvey.org/user/new
+# once you have registered, fill in your email address below
+essurvey::set_email("XX")
+
+```
+
+```{r}
+# Let's load all available rounds 1-9
+# The function defaults to "stata" format
+# BUT: there is an error with the haven package
+# (more info here: https://github.com/ropensci/essurvey/issues/44)
+# So if you import in stata format then rounds 1-8 get imported with haven
+# and round 9 gets imported with foreign
+# This means rounds 1-8 and round 9 end up being in different formats
+# that's annoying!
+# Instead, let's just import all rounds in SPSS format to avoid that error:
+ess_raw <- import_rounds(1:9, format="spss")
+```
+
+givet variation i variablers navne og hvordan de forskellige ESS runder er formateret har jeg tilpasset Sophie Hills kode. Derfor er flere forskellige funktion til at åbne dataen. Det kunne sikkert gøres på en hurtiger kortere måde, 
+men dette fungere
+
+```{r}
+# Now we need to create a function to:
+# (i) select required variables from each of the 9 datasets
+# (ii) create a generalized party vote choice variable, instead of having lots of country-round specific variables
+
+# note: for Germany there are TWO vote intention variables
+# since they cast 1 vote for a candidate "prtvde1" and then 1 vote for a party list "prtvde2"
+# I will just use the party of the candidate vote
+# which is why I drop variables ending in "de2" in the function below
+
+# You can add the variables you want to extract in the select function below
+# Make sure to get the variable name exactly right: http://nesstar.ess.nsd.uib.no/webview/
+# Use "start_with()" / "ends_with()" to grab all variables starting with that string
+ess1.df.clean <- function(x){
+  esx <- x %>% 
+    dplyr::select("essround", # REQUIRED: essround
+                      "idno", # REQUIRED: respondent ID
+                      "cntry", # REQUIRED: country 
+                      dplyr::starts_with("inw"), # REQUIRED: interview date (to match vote recall to specific election)
+                      "gndr" , # gender
+                      "agea", # age
+                      dplyr::starts_with("edulvl"), # educational attainment (several vars)
+                      dplyr::starts_with("isco"), # occupation
+                      dplyr::starts_with("prtv"), # party vote
+                      #dplyr::-ends_with("de1"), # drop 1st German vote intention var
+                      "dweight", #dweight 
+                      "pspwght", #Post-stratification weight including design weight
+                      "pweight", #Population size weight,
+                  "rlgblg", "rlgdnm", "rlgblge", "rlgdnme",
+                  c("ctzcntr":"mocntr"), #chose citizen and immigration status questions
+                  c("ipcrtiv":"impfun") #human values
+
+  ) %>% 
+    as.data.frame()
+  # find FIRST country-specific vote variable
+  start <- head(grep("prtv", colnames(esx)), n=1)
+  # find LAST country-specific vote variable
+  end <- tail(grep("prtv", colnames(esx)), n=1)
+  # mini dataset of party choice vars
+  es.vote <- esx %>% dplyr::select(start:end)
+  # create dataset-wide vote variable by merging the country-specific vars
+  esx$party.vote.num <- as.vector(do.call(coalesce, es.vote))
+  # convert numeric values into party names
+  es.vote.named <- as_label(es.vote)
+  # convert factors into characters to make sure they're stored properly
+  es.vote.named[] <- lapply(es.vote.named, as.character)
+  # create another dataset-wide vote variable, this time for the character variable
+  esx$party.vote.name <- as.vector(do.call(coalesce, es.vote.named))
+  # convert to UTF encoding to deal with special characters
+  # delete unnecessary variables
+  start <- head(grep("prtvt", colnames(esx)), n=1)
+  end <- tail(grep("prtvt", colnames(esx)), n=1)
+  esx <- esx %>% select(-(start:end))
+  esx
+  
+}
+
+ess2_3.df.clean <- function(x){
+  esx <- x %>% 
+    dplyr::select("essround", # REQUIRED: essround
+                      "idno", # REQUIRED: respondent ID
+                      "cntry", # REQUIRED: country 
+                      dplyr::starts_with("inw"), # REQUIRED: interview date (to match vote recall to specific election)
+                      "gndr" , # gender
+                      "agea", # age
+                      dplyr::starts_with("edulvl"), # educational attainment (several vars)
+                      dplyr::starts_with("isco"), # occupation
+                      dplyr::starts_with("prtv"), # party vote
+                      #dplyr::-ends_with("de1"), # drop 1st German vote intention var
+                      "dweight", #dweight 
+                      "pspwght", #Post-stratification weight including design weight
+                      "pweight", #Population size weight,
+                  "rlgblg", "rlgdnm", "rlgblge", "rlgdnme",
+                  c("ctzcntr":"mbrncnt"), #chose citizen and immigration status questions
+                  c("ipcrtiv":"impfun") #human values
+
+  ) %>% 
+    as.data.frame()
+  # find FIRST country-specific vote variable
+  start <- head(grep("prtv", colnames(esx)), n=1)
+  # find LAST country-specific vote variable
+  end <- tail(grep("prtv", colnames(esx)), n=1)
+  # mini dataset of party choice vars
+  es.vote <- esx %>% dplyr::select(start:end)
+  # create dataset-wide vote variable by merging the country-specific vars
+  esx$party.vote.num <- as.vector(do.call(coalesce, es.vote))
+  # convert numeric values into party names
+  es.vote.named <- as_label(es.vote)
+  # convert factors into characters to make sure they're stored properly
+  es.vote.named[] <- lapply(es.vote.named, as.character)
+  # create another dataset-wide vote variable, this time for the character variable
+  esx$party.vote.name <- as.vector(do.call(coalesce, es.vote.named))
+  # convert to UTF encoding to deal with special characters
+  # delete unnecessary variables
+  start <- head(grep("prtvt", colnames(esx)), n=1)
+  end <- tail(grep("prtvt", colnames(esx)), n=1)
+  esx <- esx %>% select(-(start:end))
+  esx
+  
+}
+```
+
+```{r}
+ess4_5.df.clean <- function(x){
+  esx <- x %>% 
+    dplyr::select("essround", # REQUIRED: essround
+                      "idno", # REQUIRED: respondent ID
+                      "cntry", # REQUIRED: country 
+                      dplyr::starts_with("inw"), # REQUIRED: interview date (to match vote recall to specific election)
+                      "gndr" , # gender
+                      "agea", # age
+                      dplyr::starts_with("edulvl"), # educational attainment (several vars)
+                      dplyr::starts_with("isco"), # occupation
+                      dplyr::starts_with("prtv"), # party vote
+                      #dplyr::-ends_with("de1"), # drop 1st German vote intention var
+                      "dweight", #dweight 
+                      "pspwght", #Post-stratification weight including design weight
+                      "pweight", #Population size weight
+                  "rlgblg", "rlgdnm", "rlgblge", "rlgdnme",
+                  c("ctzcntr":"mbrncnta"), #chose citizen and immigration status questions
+                  c("ipcrtiv":"impfun") #human values
+    )
+}
+
+ess6_8.df.clean <- function(x){
+  esx <- x %>% 
+    dplyr::select("essround", # REQUIRED: essround
+                      "idno", # REQUIRED: respondent ID
+                      "cntry", # REQUIRED: country 
+                      dplyr::starts_with("inw"), # REQUIRED: interview date (to match vote recall to specific election)
+                      "gndr" , # gender
+                      "agea", # age
+                      dplyr::starts_with("edulvl"), # educational attainment (several vars)
+                      dplyr::starts_with("isco"), # occupation
+                      dplyr::starts_with("prtv"), # party vote
+                      #dplyr::-ends_with("de1"), # drop 1st German vote intention var
+                      "dweight", #dweight 
+                      "pspwght", #Post-stratification weight including design weight
+                      "pweight", #Population size weight
+                  "rlgblg", "rlgdnm", "rlgblge", "rlgdnme",
+                  c("ctzcntr":"mbrncntb"), #chose citizen and immigration status questions
+                  c("ipcrtiv":"impfun") #human values    
+                  )
+}
+
+ess9.df.clean <- function(x){
+  esx <- x %>% 
+    dplyr::select("essround", # REQUIRED: essround
+                      "idno", # REQUIRED: respondent ID
+                      "cntry", # REQUIRED: country 
+                      dplyr::starts_with("inw"), # REQUIRED: interview date (to match vote recall to specific election)
+                      "gndr" , # gender
+                      "agea", # age
+                      dplyr::starts_with("edulvl"), # educational attainment (several vars)
+                      dplyr::starts_with("isco"), # occupation
+                      dplyr::starts_with("prtv"), # party vote
+                      #dplyr::-ends_with("de1"), # drop 1st German vote intention var
+                      "dweight", #dweight 
+                      "pspwght", #Post-stratification weight including design weight
+                      "pweight", #Population size weight
+                  "rlgblg", "rlgdnm", "rlgblge", "rlgdnme",
+                  c("ctzcntr":"mbrncntc"), #chose citizen and immigration status questions
+                  c("ipcrtiv":"impfun") #human values
+                      )
+}
+```
+
+
+```{r}
+ess4_5.df.clean <- function(x){
+  esx <- x %>% 
+    dplyr::select("essround", # REQUIRED: essround
+                      "idno", # REQUIRED: respondent ID
+                      "cntry", # REQUIRED: country 
+                      dplyr::starts_with("inw"), # REQUIRED: interview date (to match vote recall to specific election)
+                      "gndr" , # gender
+                      "agea", # age
+                      dplyr::starts_with("edulvl"), # educational attainment (several vars)
+                      dplyr::starts_with("isco"), # occupation
+                      dplyr::starts_with("prtv"), # party vote
+                      #dplyr::-ends_with("de1"), # drop 1st German vote intention var
+                      "dweight", #dweight 
+                      "pspwght", #Post-stratification weight including design weight
+                      "pweight", #Population size weight
+                  "rlgblg", "rlgdnm", "rlgblge", "rlgdnme",
+                  c("ctzcntr":"mbrncnta"), #chose citizen and immigration status questions
+                  c("ipcrtiv":"impfun") #human values
+    )
+}
+
+ess6_8.df.clean <- function(x){
+  esx <- x %>% 
+    dplyr::select("essround", # REQUIRED: essround
+                      "idno", # REQUIRED: respondent ID
+                      "cntry", # REQUIRED: country 
+                      dplyr::starts_with("inw"), # REQUIRED: interview date (to match vote recall to specific election)
+                      "gndr" , # gender
+                      "agea", # age
+                      dplyr::starts_with("edulvl"), # educational attainment (several vars)
+                      dplyr::starts_with("isco"), # occupation
+                      dplyr::starts_with("prtv"), # party vote
+                      #dplyr::-ends_with("de1"), # drop 1st German vote intention var
+                      "dweight", #dweight 
+                      "pspwght", #Post-stratification weight including design weight
+                      "pweight", #Population size weight
+                  "rlgblg", "rlgdnm", "rlgblge", "rlgdnme",
+                  c("ctzcntr":"mbrncntb"), #chose citizen and immigration status questions
+                  c("ipcrtiv":"impfun") #human values    
+                  )
+}
+
+ess9.df.clean <- function(x){
+  esx <- x %>% 
+    dplyr::select("essround", # REQUIRED: essround
+                      "idno", # REQUIRED: respondent ID
+                      "cntry", # REQUIRED: country 
+                      dplyr::starts_with("inw"), # REQUIRED: interview date (to match vote recall to specific election)
+                      "gndr" , # gender
+                      "agea", # age
+                      dplyr::starts_with("edulvl"), # educational attainment (several vars)
+                      dplyr::starts_with("isco"), # occupation
+                      dplyr::starts_with("prtv"), # party vote
+                      #dplyr::-ends_with("de1"), # drop 1st German vote intention var
+                      "dweight", #dweight 
+                      "pspwght", #Post-stratification weight including design weight
+                      "pweight", #Population size weight
+                  "rlgblg", "rlgdnm", "rlgblge", "rlgdnme",
+                  c("ctzcntr":"mbrncntc"), #chose citizen and immigration status questions
+                  c("ipcrtiv":"impfun") #human values
+                      )
+}
+```
+
+
+## rense de 9 datasæt
+medtage parti valg i de forskellige lande og ESS runder
+```{r}
+ess_1 <- ess1.df.clean(ess_raw[[1]])
+ess_2 <- ess2_3.df.clean(ess_raw[[2]])
+ess_3 <- ess2_3.df.clean(ess_raw[[3]])
+```
+
+
+```{r}
+ess_4 <- ess4_5.df.clean(ess_raw[[4]])
+```
+
+```{r}
+start <- head(grep("prtv", colnames(ess_4)), n=1)
+end <- tail(grep("prtv", colnames(ess_4)), n=1)
+# mini dataset of party choice vars
+ess_4.vote <- ess_4 %>% dplyr::select(start:end)
+ess_4.vote <- as_label(ess_4.vote[,1:29])
+```
+
+```{r}
+ess_4.vote$party.vote.name <- as.vector(do.call(coalesce, ess_4.vote))
+ess_4.vote <- ess_4.vote %>%
+  select(party.vote.name)
+ess_4 <- bind_cols(ess_4, ess_4.vote)
+```
+
+```{r}
+start <- head(grep("prtv", colnames(ess_4)), n=1)
+end <- tail(grep("prtv", colnames(ess_4)), n=1)
+ess_4.num <- ess_4 %>% dplyr::select(start:end)
+# create dataset-wide vote variable by merging the country-specific vars
+ess_4.num <- unlabel(ess_4.num)
+ess_4.num$party.vote.num <- as.vector(do.call(coalesce, ess_4.num))
+ess_4.num <- ess_4.num %>%
+  select(party.vote.num)
+ess_4 <- bind_cols(ess_4, ess_4.num)
+rm(ess_4.num, ess_4.vote)
+```
+
+
+
+```{r}
+ess_5 <- ess4_5.df.clean(ess_raw[[5]])
+```
+
+```{r}
+start <- head(grep("prtv", colnames(ess_5)), n=1)
+end <- tail(grep("prtv", colnames(ess_5)), n=1)
+# mini dataset of party choice vars
+ess_5.vote <- ess_5 %>% dplyr::select(start:end)
+ess_5.vote <- as_label(ess_5.vote[,1:30])
+```
+
+```{r}
+ess_5.vote$party.vote.name <- as.vector(do.call(coalesce, ess_5.vote))
+ess_5.vote <- ess_5.vote %>%
+  select(party.vote.name)
+ess_5 <- bind_cols(ess_5, ess_5.vote)
+```
+
+```{r}
+start <- head(grep("prtv", colnames(ess_5)), n=1)
+end <- tail(grep("prtv", colnames(ess_5)), n=1)
+ess_5.num <- ess_5 %>% dplyr::select(start:end)
+# create dataset-wide vote variable by merging the country-specific vars
+ess_5.num <- unlabel(ess_5.num)
+ess_5.num$party.vote.num <- as.vector(do.call(coalesce, ess_5.num))
+ess_5.num <- ess_5.num %>%
+  select(party.vote.num)
+ess_5 <- bind_cols(ess_5, ess_5.num)
+rm(ess_5.num, ess_5.vote)
+```
+
+
+
+
+```{r}
+ess_6 <- ess6_8.df.clean(ess_raw[[6]])
+```
+
+```{r}
+start <- head(grep("prtv", colnames(ess_6)), n=1)
+end <- tail(grep("prtv", colnames(ess_6)), n=1)
+# mini dataset of party choice vars
+ess_6.vote <- ess_6 %>% dplyr::select(start:end)
+ess_6.vote <- as_label(ess_6.vote[,1:32])
+```
+
+```{r}
+ess_6.vote$party.vote.name <- as.vector(do.call(coalesce, ess_6.vote))
+ess_6.vote <- ess_6.vote %>%
+  select(party.vote.name)
+ess_6 <- bind_cols(ess_6, ess_6.vote)
+```
+
+```{r}
+start <- head(grep("prtv", colnames(ess_6)), n=1)
+end <- tail(grep("prtv", colnames(ess_6)), n=1)
+ess_6.num <- ess_6 %>% dplyr::select(start:end)
+# create dataset-wide vote variable by merging the country-specific vars
+ess_6.num <- unlabel(ess_6.num)
+ess_6.num$party.vote.num <- as.vector(do.call(coalesce, ess_6.num))
+ess_6.num <- ess_6.num %>%
+  select(party.vote.num)
+ess_6 <- bind_cols(ess_6, ess_6.num)
+rm(ess_6.num, ess_6.vote)
+```
+
+
+```{r}
+ess_7 <- ess6_8.df.clean(ess_raw[[7]])
+```
+
+```{r}
+start <- head(grep("prtv", colnames(ess_7)), n=1)
+end <- tail(grep("prtv", colnames(ess_7)), n=1)
+# mini dataset of party choice vars
+ess_7.vote <- ess_7 %>% dplyr::select(start:end)
+ess_7.vote <- as_label(ess_7.vote[,1:24])
+```
+
+```{r}
+ess_7.vote$party.vote.name <- as.vector(do.call(coalesce, ess_7.vote))
+ess_7.vote <- ess_7.vote %>%
+  select(party.vote.name)
+ess_7 <- bind_cols(ess_7, ess_7.vote)
+```
+
+```{r}
+start <- head(grep("prtv", colnames(ess_7)), n=1)
+end <- tail(grep("prtv", colnames(ess_7)), n=1)
+ess_7.num <- ess_7 %>% dplyr::select(start:end)
+# create dataset-wide vote variable by merging the country-specific vars
+ess_7.num <- unlabel(ess_7.num)
+ess_7.num$party.vote.num <- as.vector(do.call(coalesce, ess_7.num))
+ess_7.num <- ess_7.num %>%
+  select(party.vote.num)
+ess_7 <- bind_cols(ess_7, ess_7.num)
+rm(ess_7.num, ess_7.vote)
+```
+
+
+```{r}
+ess_8 <- ess6_8.df.clean(ess_raw[[8]])
+```
+
+```{r}
+start <- head(grep("prtv", colnames(ess_8)), n=1)
+end <- tail(grep("prtv", colnames(ess_8)), n=1)
+# mini dataset of party choice vars
+ess_8.vote <- ess_8 %>% dplyr::select(start:end)
+ess_8.vote <- as_label(ess_8.vote[,1:26])
+```
+
+```{r}
+ess_8.vote$party.vote.name <- as.vector(do.call(coalesce, ess_8.vote))
+ess_8.vote <- ess_8.vote %>%
+  select(party.vote.name)
+ess_8 <- bind_cols(ess_8, ess_8.vote)
+```
+
+```{r}
+start <- head(grep("prtv", colnames(ess_8)), n=1)
+end <- tail(grep("prtv", colnames(ess_8)), n=1)
+ess_8.num <- ess_8 %>% dplyr::select(start:end)
+# create dataset-wide vote variable by merging the country-specific vars
+ess_8.num <- unlabel(ess_8.num)
+ess_8.num$party.vote.num <- as.vector(do.call(coalesce, ess_8.num))
+ess_8.num <- ess_8.num %>%
+  select(party.vote.num)
+ess_8 <- bind_cols(ess_8, ess_8.num)
+rm(ess_8.num, ess_8.vote)
+```
+
+
+```{r}
+ess_9 <- ess9.df.clean(ess_raw[[9]])
+```
+
+```{r}
+start <- head(grep("prtv", colnames(ess_9)), n=1)
+end <- tail(grep("prtv", colnames(ess_9)), n=1)
+# mini dataset of party choice vars
+ess_9.vote <- ess_9 %>% dplyr::select(start:end)
+ess_9.vote <- as_label(ess_9.vote[,1:32])
+```
+
+```{r}
+ess_9.vote$party.vote.name <- as.vector(do.call(coalesce, ess_9.vote))
+ess_9.vote <- ess_9.vote %>%
+  select(party.vote.name)
+ess_9 <- bind_cols(ess_9, ess_9.vote)
+```
+
+```{r}
+start <- head(grep("prtv", colnames(ess_9)), n=1)
+end <- tail(grep("prtv", colnames(ess_9)), n=1)
+ess_9.num <- ess_9 %>% dplyr::select(start:end)
+# create dataset-wide vote variable by merging the country-specific vars
+ess_9.num <- unlabel(ess_9.num)
+ess_9.num$party.vote.num <- as.vector(do.call(coalesce, ess_9.num))
+ess_9.num <- ess_9.num %>%
+  select(party.vote.num)
+ess_9 <- bind_cols(ess_9, ess_9.num)
+rm(ess_9.num, ess_9.vote)
+```
+##Samle data i en fil
+```{r}
+ess_4_9 <- bind_rows(ess_4, ess_5, ess_6, ess_7, ess_8, ess_9)
+
+ess_4_9 <- ess_4_9 %>% select(-contains("prtv"))
+
+ess_1_2 <- bind_rows(ess_1, ess_2)
+ess_1_3 <- bind_rows(ess_1_2, ess_3)
+ess <- bind_rows(ess_1_3, ess_4_9)
+ess <- ess %>%
+  select(-starts_with("inw"))
+rm(list = apropos("ess_"))
+```
