@@ -1,7 +1,9 @@
 ---
-title: "åbne data - ess"
+title: "1. åbne data - ess"
 output: html_notebook
 ---
+Skal køres som før noget andet gode der benytter ess data 
+
 Kode der viser hvordan jeg åbner ess data. Tilpasset kode fra Sophie Hill:
 https://github.com/sophieehill/ess-cumulative/blob/c71e74a8b299dd2d53e000a5e30e102c651247ac/build_cumulative_core_ESS.R
 build_cumulative_core_ESS.R
