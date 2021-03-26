@@ -1,7 +1,15 @@
 ---
-title: "1. åbne data - ess"
+title: "1 Aabne data"
 output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+header-includes:
+    - \usepackage{setspace}\doublespacing
+    - \usepackage{booktabs} 
+    - \usepackage{tabularx}
+    - \usepackage{tidy}
 ---
+
 Skal køres som før noget andet gode der benytter ess data 
 
 Kode der viser hvordan jeg åbner ess data. Tilpasset kode fra Sophie Hill:
@@ -10,7 +18,8 @@ build_cumulative_core_ESS.R
 
 Derfor er koden både på engelsk og dansk. I denne kode del henter jeg og åbne ESS data fra alle 9 runder. For at gøre dette kræver det en bruger hos ESS. Jeg har fjernet infomation om min egne brugernavn og adgangskode fra koden
 
-```{r}
+
+```{r hente-pakker, message=FALSE, include=FALSE, echo=FALSE}
 # load packages
 library(tidyverse) # for data wrangling
 library(essurvey) # to download ESS data
@@ -18,6 +27,8 @@ library(essurvey) # to download ESS data
 # devtools::install_github("ropensci/essurvey")
 library(sjlabelled) # to convert party vote choice into names
 library(data.table) # for the "fread" function to quickly load large csv files
+Sys.setenv("LANGUAGE"="EN") #error in english
+
 ```
 
 ```{r}
@@ -28,8 +39,7 @@ tabl <- function(...) table(..., useNA='ifany')
 # YOU NEED TO REGISTER YOUR EMAIL WITH THE ESS:
 # you can do that here: http://www.europeansocialsurvey.org/user/new
 # once you have registered, fill in your email address below
-essurvey::set_email("XX")
-
+essurvey::set_email("XXXX")
 ```
 
 ```{r}
@@ -46,6 +56,8 @@ ess_raw <- import_rounds(1:9, format="spss")
 ```
 
 givet variation i variablers navne og hvordan de forskellige ESS runder er formateret har jeg tilpasset Sophie Hills kode. Derfor er 2 funktion til at åbne dataen. 
+
+
 ```{r}
 # Now we need to create a function to:
 # (i) select required variables from each of the 9 datasets
@@ -170,7 +182,7 @@ return(as.data.frame(esx))
 ```
 
 
-```{r}
+```{r, message=FALSE, include=FALSE, echo=FALSE}
 ess_1 <- ess1.df.clean(ess_raw[[1]])
 ess_2 <- ess2_9.df.clean(ess_raw[[2]])
 ess_3 <- ess2_9.df.clean(ess_raw[[3]])
@@ -271,7 +283,7 @@ ess$party.vote.ess <- ifelse(is.na(ess$party.vote.num), NA,
                              paste0(ess$cntry, "-", ess$essround, "-", ess$party.vote.num))
 ```
 
-```{r}
+```{r, message=FALSE, include=FALSE, echo=FALSE}
 # load the ESS-Partyfacts extended crosswalk
 cw_ess_pf <- read_csv(url("https://raw.githubusercontent.com/sophieehill/ess-partyfacts-crosswalk/master/ess-partyfacts-extended.csv"))
 cw_ess_pf$party.vote.ess <- paste0(cw_ess_pf$cntry, "-", cw_ess_pf$essround, "-", cw_ess_pf$ess_id)
@@ -279,7 +291,7 @@ cw_ess_pf <- cw_ess_pf %>% select(party.vote.ess, partyfacts_id, partyfacts_name
 ```
 
 
-```{r}
+```{r, message=FALSE, include=FALSE, echo=FALSE}
 # merge partyfacts IDs into main dataset
 ess <- left_join(ess, cw_ess_pf, by=c("party.vote.ess"))
 
@@ -305,7 +317,7 @@ ess <- left_join(ess, ess_dates, by=c("cntry", "essround"))
 
 ```
 
-```{r}
+```{r varaible med seneste valg ift. interview dato}
 ess <- ess %>% mutate(ref.election = case_when(int.date > recent_election ~ recent_election,
                                                int.date <= recent_election ~ recent_election_split1))
 #tabl(ess$ref.election)
@@ -313,7 +325,7 @@ ess <- ess %>% mutate(ref.election = case_when(int.date > recent_election ~ rece
 ```
 
 
-```{r}
+```{r parti valg familier efter comparative manifestato data}
 # Merge with CMP data to get party families
 # Download latest CMP dataset
 # (Use API or just load "cmp.csv")
@@ -323,9 +335,8 @@ mp_setapikey(key = "70af9d9d7f76a3d66d41142debe969f6")
 # download latest dataset
 cmp <- as.data.frame(mp_maindataset())
 # save for replicability
-# write.csv(cmp, "cmp_main_2020.csv")
+write.csv(cmp, "../data/cmp_main_2020.csv")
 head(cmp)
-tabl(cmp$edate)
 summary(cmp$party)
 # create election year variable
 cmp$election.year <- as.numeric(as.character(substr(cmp$date, 1, 4)))
@@ -361,7 +372,6 @@ cmp.x <- cmp %>% select(party, parfam, election.year, edate, rile,
 names(cmp.x)[1:2] <- c("cmp_id", "cmp_parfam") # relabel for clarity
 head(cmp.x)
 ess$election.year <- as.numeric(as.character(substr(ess$ref.election, 1, 4)))
-tabl(ess$election.year)
 # match up by election year
 # N.B. this won't work for cases where two elections happen in the same year, and ESS fieldwork window covers the 2nd election
 ess <- left_join(ess, cmp.x, by=c("cmp_id", "election.year"))
@@ -378,30 +388,28 @@ ess$vote.left <- ifelse(ess$cmp_parfam==10 | ess$cmp_parfam==20 | ess$cmp_parfam
 ```
 
 
-```{r}
-names(ess)
-```
-
-
-
+# finpusning af data
 der er problem med idno variable, da flere variabler har samme id. derfor laver jeg et nyt
-```{r}
+```{r skabe id nummer}
 ess <- ess%>%
   mutate(id = row_number())
 ```
 
 
 filter data, så jeg kun medbring data fra land, som der er trussel data for
-```{r}
+```{r datasæt med kun RTV lande}
 ess_cntry <- ess %>%
   filter(cntry %in% c("NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT", "FI", "GR", "CH", "IE", "BE"))
 ```
 
-
+Slette data som ikke skal bruges 
 ```{r}
-write_csv(ess, "ess_all.csv", row.names=FALSE))
-write_csv(ess_cntry, "ess_cntry.csv", row.names=FALSE))
+rm(list = ls()[!ls() %in% c("ess", "ess_cntry")])
 ```
 
-
+# Gemme relevant data
+```{r Gemme data}
+write_csv(ess, "../data/ess_all.csv")
+write_csv(ess_cntry, "../data/ess_cntry.csv")
+```
 
