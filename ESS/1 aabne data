@@ -399,8 +399,8 @@ ess_cntry <- ess %>%
 
 
 ```{r}
-write_csv(ess, "ess_all.csv")
-write_csv(ess_cntry, "ess_cntry.csv")
+write_csv(ess, "ess_all.csv", row.names=FALSE))
+write_csv(ess_cntry, "ess_cntry.csv", row.names=FALSE))
 ```
 
 
