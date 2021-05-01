@@ -1,0 +1,325 @@
+---
+title: "Linære regression modeller"
+author: "Eva Tryde"
+date: "17/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(psych)
+library(car)
+library(ggpubr)
+library(stargazer)
+library(broom)
+library(ggplot2)
+library(performance)
+library(see)
+library(plyr)
+library(viridis)
+library(extrafont)
+loadfonts()
+library(patchwork)
+```
+
+
+```{r data, message=FALSE}
+ess <- read.csv("../data/ess_treated.csv")
+auto  <- read.csv("../data/auto_scale.csv")
+```
+
+```{r, message=FALSE}
+ess <- ess %>%
+  filter(cntry %in% c(
+  "NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT",
+  "FI", "GR", "CH", "IE", "BE"))%>%
+  filter(dikotom %in% c("muslim", "majority"))%>%
+  dplyr::select(id, cntry, dikotom, rlgdgr, income, educ.ba, female, age, essround, int.year)
+
+auto <- auto %>%
+  dplyr::select(id, cntry, PVQ)
+
+samlet_ess <- left_join(ess, auto, by = c("id", "cntry"))
+```
+
+
+
+```{r}
+lm <- lm(PVQ ~ dikotom, data = samlet_ess)
+#summary(lm)
+df <- data.frame(confint(lm))
+df_1<- data.frame(summary(lm)$coefficients)
+df <-bind_cols(df_1, df)
+df <- df%>%
+  rename(minerror = X2.5.., maxerror = X97.5..)%>%
+  select(Estimate, minerror, maxerror)
+estimate <- df[1,1]
+df_1 <- df[2,]
+df <- df[1,]
+df_1 <- estimate+df_1
+#geom_text labels
+#df6$x_axis_value1 <- forcats::fct_rev(factor(df6$x_axis_value)) 
+df <- bind_rows(df, df_1)
+df <- tibble::rownames_to_column(df, "værdi")
+
+df$gruppe[df$værdi == "(Intercept)"] <- "Majoritet"
+df$gruppe[df$værdi == "dikotommuslim"] <- "Muslim"
+df_all <- df
+df_all$periode <- "alt" 
+```
+
+```{r fig.height=1, fig.width=8}
+ggplot(df_all, aes(periode, Estimate, color = gruppe))+
+  geom_point()+
+  geom_errorbar(aes(ymin = minerror, 
+                    ymax = maxerror, width = 0.4), alpha = 0.7)+
+    coord_flip()+
+  theme_classic()+
+     scale_color_manual(name = "Respondet gruppe", values = c("Majoritet" = "#641A80FF", "Muslim" = "#FE9F6DFF"), labels = c("Majoritet", "Muslimer"))+
+
+    scale_y_continuous(name = "Gennemsnitlig autoritære prædisposition", limits = c(4.5,5.5))+
+    theme(legend.position = "none")+
+  xlab("")
+
+```
+
+
+```{r}
+lm <- lm(PVQ ~ dikotom*as.factor(int.year), data = samlet_ess)
+#summary(lm)
+df <- data.frame(confint(lm))
+
+df_1<- data.frame(summary(lm)$coefficients)
+df <-bind_cols(df_1, df)
+df <- df%>%
+  rename(minerror = X2.5.., maxerror = X97.5..)%>%
+  select(Estimate, minerror, maxerror)
+
+estimate <- df[1,1]
+df_1 <- df[2:38,]
+df <- df[1,]
+df_1 <- estimate+df_1
+#geom_text labels
+#df6$x_axis_value1 <- forcats::fct_rev(factor(df6$x_axis_value)) 
+df <- bind_rows(df, df_1)
+df <- tibble::rownames_to_column(df, "værdi")
+
+df_majo <- df[3:20,]
+df_1 <- df[1,]
+df_majo <- bind_rows(df_1, df_majo)
+df_majo$gruppe <- "Majoritet" 
+
+df_mu <- df[21:38,]
+df_1 <- df[2,]
+df_mu <- bind_rows(df_1, df_mu)
+df_mu$gruppe <- "Muslim" 
+df_mu$year <- c(2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020)
+df_majo$year <- c(2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020)
+
+df_mu <- df_mu[,2:6]
+df_majo <- df_majo[,2:6]
+df_year <- bind_rows(df_majo, df_mu)
+df_year <- df_year %>%
+  filter(year != 2020)
+```
+
+
+
+
+```{r fig.height=8, fig.width=4}
+ggplot(df_year, aes(year, Estimate, color = gruppe))+
+  geom_point(size = 1.8, position=position_dodge(width=-0.3))+
+  geom_errorbar(aes(ymin = minerror, 
+                    ymax = maxerror, width = 0), position=position_dodge(width=-0.3))+
+  scale_x_reverse(breaks = c(2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019))+
+   scale_color_manual(name = "Respondet gruppe", values = c("Majoritet" = "#641A80FF", "Muslim" = "#FE9F6DFF"), labels = c("Majoritet", "Muslimer"))+
+  geom_hline(yintercept = 5.158853, linetype ="dashed", color = "black")+
+  geom_hline(yintercept = 5.345924, linetype ="dashed", color = "blue")+
+  coord_flip()+
+  theme_classic()+
+  scale_y_continuous(name = "Gennemsnitlig autoritære prædisposition", limits = c(4.5,5.5))+
+  theme(legend.position = "bottom")
+
+```
+
+```{r}
+lm <- lm(PVQ ~ dikotom*as.factor(essround), data = samlet_ess)
+#summary(lm)
+df <- data.frame(confint(lm))
+
+df_1<- data.frame(summary(lm)$coefficients)
+df <-bind_cols(df_1, df)
+df <- df%>%
+  rename(minerror = X2.5.., maxerror = X97.5..)%>%
+  select(Estimate, minerror, maxerror)
+
+estimate <- df[1,1]
+df_1 <- df[2:18,]
+df <- df[1,]
+df_1 <- estimate+df_1
+#geom_text labels
+#df6$x_axis_value1 <- forcats::fct_rev(factor(df6$x_axis_value)) 
+df <- bind_rows(df, df_1)
+df <- tibble::rownames_to_column(df, "værdi")
+
+df_majo <- df[3:10,]
+df_1 <- df[1,]
+df_majo <- bind_rows(df_1, df_majo)
+df_majo$gruppe <- "Majoritet" 
+
+df_mu <- df[11:18,]
+df_1 <- df[2,]
+df_mu <- bind_rows(df_1, df_mu)
+df_mu$gruppe <- "Muslim" 
+df_mu$ESS <- c("Runde 1", "Runde 2", "Runde 3", "Runde 4", "Runde 5", "Runde 6", "Runde 7", "Runde 8", "Runde 9")
+df_majo$ESS <- c("Runde 1", "Runde 2", "Runde 3", "Runde 4", "Runde 5", "Runde 6", "Runde 7", "Runde 8", "Runde 9")
+
+df_mu <- df_mu[,2:6]
+df_majo <- df_majo[,2:6]
+df_ESS <- bind_rows(df_majo, df_mu)
+df_ESS$ESS <- as.factor(df_ESS$ESS)
+df_ESS$ESS <- fct_rev(df_ESS$ESS)
+
+```
+
+```{r fig.height=8, fig.width=4}
+ggplot(df_ESS, aes(ESS, Estimate, color = gruppe))+
+  geom_point(size = 1.8, position=position_dodge(width=-0.3))+
+  geom_errorbar(aes(ymin = minerror, 
+                    ymax = maxerror, width = 0), position=position_dodge(width=-0.3))+
+  #scale_x_discrete(breaks = c("Runde 1", "Runde 2", "Runde 3", "Runde 4", "Runde 5", "Runde 6", "Runde 7", "Runde 8", "Runde 9"))+
+   scale_color_manual(name = "Respondet gruppe", values = c("Majoritet" = "#641A80FF", "Muslim" = "#FE9F6DFF"), labels = c("Majoritet", "Muslimer"))+
+  coord_flip()+
+  theme_classic()+
+    geom_hline(yintercept = 5.158853, linetype ="dashed", color = "black")+
+  geom_hline(yintercept = 5.345924, linetype ="dashed", color = "blue")+
+    scale_y_continuous(name = "Gennemsnitlig autoritære prædisposition", limits = c(4.5,5.5))+
+  theme(legend.position = "bottom")
+```
+
+```{r fig.height=8, fig.width=4}
+essrunde <- function(n, essrunde){
+  df_essn <- samlet_ess%>%
+    filter(essround == n)
+  lm <- lm(PVQ ~ dikotom, data = df_essn)
+  df <- data.frame(confint(lm))
+  df_1<- data.frame(summary(lm)$coefficients)
+  df <-bind_cols(df_1, df)
+  df <- df%>%
+    rename(minerror = X2.5.., maxerror = X97.5..)%>%
+    select(Estimate, minerror, maxerror)
+  
+  estimate <- df[1,1]
+  df_1 <- df[2,]
+  df <- df[1,]
+  df_1 <- estimate+df_1
+  df <- bind_rows(df, df_1)
+  df <- tibble::rownames_to_column(df, "værdi")
+  df_majo <- df[1,]
+  df_majo$gruppe <- "Majoritet" 
+  df_mu <- df[2,]
+  df_mu$gruppe <- "Muslim" 
+  df_essn <- bind_rows(df_majo, df_mu)
+  df_essn$runde <- essrunde
+  return(df_essn)
+}
+
+df_ess1 <- essrunde(1, 1)
+df_ess2 <- essrunde(2, 2)
+df_ess3 <- essrunde(3, 3)
+df_ess4 <- essrunde(4, 4)
+df_ess5 <- essrunde(5, 5)
+df_ess6 <- essrunde(6, 6)
+df_ess7 <- essrunde(7, 7)
+df_ess8 <- essrunde(8, 8)
+df_ess9 <- essrunde(9, 9)
+
+df_ess <- bind_rows(df_ess1, df_ess2, df_ess3, df_ess4, df_ess5, df_ess6, df_ess7, df_ess8, df_ess9)
+rm(df_ess1, df_ess2, df_ess3, df_ess4, df_ess5, df_ess6, df_ess7, df_ess8, df_ess9)
+df_ess$runde <- as.factor(df_ess$runde)
+df_ess$runde <- fct_rev(df_ess$runde)
+
+ggplot(df_ess, aes(runde, Estimate, color = gruppe))+
+  geom_point(size = 2, position=position_dodge(width=-0.5))+
+  geom_errorbar(aes(ymin = minerror, 
+                    ymax = maxerror, width = 0), position=position_dodge(width=-0.5))+
+  #scale_x_discrete(breaks = c("Runde 1", "Runde 2", "Runde 3", "Runde 4", "Runde 5", "Runde 6", "Runde 7", "Runde 8", "Runde 9"))+
+   scale_color_manual(name = "Respondet gruppe", values = c("Majoritet" = "#641A80FF", "Muslim" = "#FE9F6DFF"), labels = c("Majoritet", "Muslimer"))+
+  coord_flip()+
+  theme_classic()+
+    geom_hline(yintercept = 5.158853, linetype ="dashed", color = "black", alpha =0.7)+
+  geom_hline(yintercept = 5.345924, linetype ="dashed", color = "blue", alpha =0.7)+
+    scale_y_continuous(name = "Gennemsnitlig autoritære prædisposition", limits = c(5,6))+
+  theme(legend.position = "bottom")
+```
+
+```{r fig.height=8, fig.width=4}
+year <- function(n, year){
+  df_yearn <- samlet_ess%>%
+    filter(int.year == n)
+  lm <- lm(PVQ ~ dikotom, data = df_yearn)
+  df <- data.frame(confint(lm))
+  df_1<- data.frame(summary(lm)$coefficients)
+  df <-bind_cols(df_1, df)
+  df <- df%>%
+    rename(minerror = X2.5.., maxerror = X97.5..)%>%
+    select(Estimate, minerror, maxerror)
+  
+  estimate <- df[1,1]
+  df_1 <- df[2,]
+  df <- df[1,]
+  df_1 <- estimate+df_1
+  df <- bind_rows(df, df_1)
+  df <- tibble::rownames_to_column(df, "værdi")
+  df_majo <- df[1,]
+  df_majo$gruppe <- "Majoritet" 
+  df_mu <- df[2,]
+  df_mu$gruppe <- "Muslim" 
+  df_yearn <- bind_rows(df_majo, df_mu)
+  df_yearn$year <- year
+  return(df_yearn)
+}
+
+df_year2002 <- year(2002, 2002)
+df_year2003 <- year(2003, 2003)
+df_year2004 <- year(2004, 2004)
+df_year2005 <- year(2005, 2005)
+df_year2006 <- year(2006, 2006)
+df_year2007 <- year(2007, 2007)
+df_year2008 <- year(2008, 2008)
+df_year2009 <- year(2009, 2009)
+df_year2010 <- year(2010, 2010)
+df_year2011 <- year(2011, 2011)
+df_year2012 <- year(2012, 2012)
+df_year2013 <- year(2013, 2013)
+df_year2014 <- year(2014, 2014)
+df_year2015 <- year(2015, 2015)
+df_year2016 <- year(2016, 2016)
+df_year2017 <- year(2017, 2017)
+df_year2018 <- year(2018, 2018)
+df_year2019 <- year(2019, 2019)
+#df_year2020 <- year(2020, 2020)
+
+
+df_year <- bind_rows(df_year2002, df_year2003, df_year2004, df_year2005, df_year2006, df_year2007, df_year2008, df_year2009, df_year2010, df_year2011, df_year2012, df_year2013, df_year2014, df_year2015, df_year2016, df_year2017, df_year2018, df_year2019)
+rm(df_year2002, df_year2003, df_year2004, df_year2005, df_year2006, df_year2007, df_year2008, df_year2009, df_year2010, df_year2011, df_year2012, df_year2013, df_year2014, df_year2015, df_year2016, df_year2017, df_year2018, df_year2019)
+df_year$year <- as.factor(df_year$year)
+df_year$year <- fct_rev(df_year$year)
+
+ggplot(df_year, aes(year, Estimate, color = gruppe))+
+  geom_point(size = 2, position=position_dodge(width=-0.5))+
+  geom_errorbar(aes(ymin = minerror, 
+                    ymax = maxerror, width = 0), position=position_dodge(width=-0.5))+
+  #scale_x_discrete(breaks = c("Runde 1", "Runde 2", "Runde 3", "Runde 4", "Runde 5", "Runde 6", "Runde 7", "Runde 8", "Runde 9"))+
+   scale_color_manual(name = "Respondet gruppe", values = c("Majoritet" = "#641A80FF", "Muslim" = "#FE9F6DFF"), labels = c("Majoritet", "Muslimer"))+
+  coord_flip()+
+  theme_classic()+
+    geom_hline(yintercept = 5.158853, linetype ="dashed", color = "black", alpha =0.7)+
+  geom_hline(yintercept = 5.345924, linetype ="dashed", color = "blue", alpha =0.7)+
+    scale_y_continuous(name = "Gennemsnitlig autoritære prædisposition", limits = c(5,6))+
+  theme(legend.position = "bottom")
+```
