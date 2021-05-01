@@ -1,1 +1,95 @@
-LAV
+---
+title: "Forudsætningstest t-test"
+author: "Eva Tryde"
+date: "1/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(psych)
+library(car)
+library(ggpubr)
+library(stargazer)
+library(broom)
+library(ggplot2)
+library(performance)
+library(see)
+library(plyr)
+library(viridis)
+library(extrafont)
+loadfonts()
+library(patchwork)
+```
+
+
+```{r data, message=FALSE}
+ess <- read.csv("../data/ess_treated.csv")
+auto  <- read.csv("../data/auto_scale.csv")
+```
+
+```{r, message=FALSE}
+flip <- function(x){
+  6 - x
+}
+ess <- mutate_at(ess, .vars=c("livecntr"), flip)
+ess$livecntr[ess$brncntr != 2] <- 0
+
+ess$livecntr_f[ess$livecntr == 0] <- "Født i landet"
+ess$livecntr_f[ess$livecntr == 1] <- "Mere end 20 år"
+ess$livecntr_f[ess$livecntr == 2] <- "Mellem 11 og 20 år"
+ess$livecntr_f[ess$livecntr == 3] <- "Mellem 6 og 10 år"
+ess$livecntr_f[ess$livecntr %in% c(4,5)] <- "Mellem 0 og 5 år"
+
+ess <- ess %>%
+  filter(cntry %in% c(
+  "NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT",
+  "FI", "GR", "CH", "IE", "BE"))%>%
+  filter(dikotom %in% c("muslim", "majority"))%>%
+  dplyr::select(id, cntry, dikotom, rlgdgr, income, educ.ba, female, age, essround, int.year)
+
+auto <- auto %>%
+  dplyr::select(id, cntry, PVQ)
+
+samlet_ess <- left_join(ess, auto, by = c("id", "cntry"))
+```
+
+```{r}
+png(file="../figures/t.test/normal.png", width=600, height=350)
+
+samlet_ess_ma <- samlet_ess%>%
+  filter(dikotom == "majority")
+ma <- ggqqplot(samlet_ess_ma$PVQ,
+               title = "Majoritets respondenter",
+               ggtheme = theme_minimal())
+
+samlet_ess_mu <- samlet_ess%>%
+  filter(dikotom == "muslim")
+mu <- ggqqplot(samlet_ess_mu$PVQ,
+               title = "Muslimske respondenter",
+               ggtheme = theme_minimal())
+
+
+plot <- ggarrange(ma, mu, nrow = 1)
+rm(mu, ma)
+plot
+dev.off()
+plot
+
+```
+
+```{r}
+leveneTest(PVQ ~ dikotom, data = samlet_ess)
+
+ttest <- stats::t.test(PVQ ~ dikotom, data = samlet_ess, alternative = "less", var.equal = FALSE)
+ttest$statistic
+ttest
+
+tapply(samlet_ess$PVQ, samlet_ess$dikotom, mean, na.rm=TRUE)
+
+tapply(samlet_ess$PVQ, samlet_ess$dikotom, sd, na.rm=TRUE)
+```
