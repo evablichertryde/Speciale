@@ -1,0 +1,229 @@
+---
+title: "t-test modeller"
+author: "Eva Tryde"
+date: "17/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(psych)
+library(car)
+library(ggpubr)
+library(stargazer)
+library(broom)
+library(ggplot2)
+library(performance)
+library(see)
+library(plyr)
+library(viridis)
+library(extrafont)
+loadfonts()
+library(patchwork)
+```
+
+
+```{r data, message=FALSE}
+ess <- read.csv("../data/ess_treated.csv")
+auto  <- read.csv("../data/auto_scale.csv")
+```
+
+```{r, message=FALSE}
+ess <- ess %>%
+  filter(cntry %in% c(
+  "NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT",
+  "FI", "GR", "CH", "IE", "BE"))%>%
+  filter(dikotom %in% c("muslim", "majority"))%>%
+  dplyr::select(id, cntry, dikotom, rlgdgr, income, educ.ba, female, age, essround, int.year)
+
+auto <- auto %>%
+  dplyr::select(id, cntry, PVQ)
+
+samlet_ess <- left_join(ess, auto, by = c("id", "cntry"))
+```
+
+
+```{r}
+ttest <- stats::t.test(PVQ ~ dikotom, data = samlet_ess, alternative = "less", var.equal = FALSE)
+ttest$statistic
+ttest
+
+tapply(samlet_ess$PVQ, samlet_ess$dikotom, mean, na.rm=TRUE)
+
+tapply(samlet_ess$PVQ, samlet_ess$dikotom, sd, na.rm=TRUE)
+```
+
+
+```{r}
+majoritet <- samlet_ess %>%
+  filter(dikotom == "majority")
+
+
+ggplot(majoritet, aes(PVQ))+
+  geom_density()+
+  geom_vline(aes(xintercept = 5.158853), color = "red", linetype = "dashed", alpha = 0.5, size = 0.5)+
+  theme_minimal()
+  
+```
+
+
+```{r fig.height=3.5, fig.width=7}
+mu <- ddply(samlet_ess, "dikotom", summarise, grp.mean=mean(PVQ, na.rm=TRUE))
+
+png(file="../figures/analyse 1/denisity muslim + majoritet overlap.png", width = 7, height = 3.5, units = "in", res=500)
+
+plot <-ggplot(samlet_ess, aes(x=PVQ)) +
+  geom_density(aes(fill = dikotom), alpha = 0.4)+
+    scale_fill_manual(name = "", values = c("majority" = "#641A80FF", "muslim" = "#FE9F6DFF"), labels = c("Majoritet", "Muslim"))+
+
+ geom_vline(data=mu, aes(xintercept=grp.mean, color=dikotom), linetype="dashed", size = 1)+
+  scale_color_manual(name = "Gennemsnitlig værdi:", values=c("majority" = "black", "muslim" = "blue"), labels = c("Majoritet", "Muslim"))+
+  theme_classic()+
+  #scale_color_viridis(option = "A", begin = 0.30, end = 0.80, discrete = TRUE)+
+  scale_x_continuous(limits = c(0,11), expand = c(0,0))+
+  scale_y_continuous(limits = c(0,0.5), expand = c(0,0))+
+ xlab("Autoritær prædisposition")+
+  ylab("Densitet")+
+  theme(legend.position = "bottom")+
+  labs(title = "Fordeling på autoritære prædisposition skalaen")+
+  theme(plot.title = element_text(hjust = 0.5, size = 12, margin=margin(0,0,30,0), family = "CM Roman"))+
+  theme(legend.text=element_text(size=10, family = "CM Roman"), legend.title = element_text(size = 10),
+        axis.text = element_text(size = 10, family = "CM Roman"), text = element_text(family = "CM Roman"))
+print(plot)
+dev.off()
+print(plot)
+
+```
+
+
+```{r fig.height=4, fig.width=8}
+png(file="../figures/analyse 1/denisity muslim + majoritet.png", width = 8, height = 4, units = "in", res=500)
+
+mu_mu <- mu%>%
+  filter(dikotom == "muslim")
+
+samlet_ess_mu <- samlet_ess %>%
+  filter(dikotom == "muslim")
+
+p2 <- ggplot(samlet_ess_mu, aes(PVQ)) +
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+  geom_density(aes(fill = "Muslimer"), alpha=.7)+
+  geom_vline(data=mu_mu, aes(xintercept=grp.mean, color="Gennemsnitlige autoritær \nprædisposition for \nmuslimske respondenter"), linetype ="dashed", size = 1)+
+  theme_classic()+
+  scale_color_manual(name = "", values = c("Gennemsnitlige autoritær \nprædisposition for \nmuslimske respondenter" = "blue"))+
+  scale_fill_manual(name = "", values = c("Muslimer" = "#FE9F6DFF"))+
+  theme(legend.position = "bottom")+ 
+  guides(fill = guide_legend(order = 1),color = guide_legend(order = 2))+
+  scale_x_continuous(limits = c(0,11), expand = c(0,0))+
+  scale_y_continuous(limits = c(0,0.5), expand = c(0,0))+
+ xlab("Autoritær prædisposition")+
+  ylab("Densitet")+
+  labs(subtitle = "B. Muslimer")+
+    theme(plot.title = element_text(hjust = 0.5, size = 12, margin=margin(0,0,30,0), family = "CM Roman"))+
+  theme(legend.text=element_text(size=10, family = "CM Roman"), legend.title = element_text(size = 10),
+        axis.text = element_text(size = 10, family = "CM Roman"), text = element_text(family = "CM Roman"))+
+  theme(plot.subtitle = element_text(hjust = 0.5, size = 11, margin=margin(0,0,30,0),family = "CM Roman"))+
+  theme(legend.text=element_text(size=10, family = "CM Roman"), text = element_text(family = "CM Roman"), axis.text = element_text(size=10, family = "CM Roman"))
+
+
+
+mu_ma <- mu%>%
+  filter(dikotom == "majority")
+
+samlet_ess_ma <- samlet_ess %>%
+  filter(dikotom == "majority")
+
+p1 <- ggplot(samlet_ess_ma, aes(PVQ)) +
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(aes(fill = "Majoritet"), alpha=.7)+
+  geom_vline(data=mu_ma, aes(xintercept=grp.mean, color="Gennemsnitlige autoritær \nprædisposition for respondenter \ni majoriteten"), linetype ="dashed", size = 1)+
+  theme_classic()+
+  scale_fill_manual(name = "", values = c("Majoritet" = "#641A80FF"))+
+    scale_color_manual(name = "", values = c("Gennemsnitlige autoritær \nprædisposition for respondenter \ni majoriteten" = "black"))+
+  theme(legend.position = "bottom")+
+    guides(fill = guide_legend(order = 1),color = guide_legend(order = 2))+
+  scale_x_continuous(limits = c(0,11), expand = c(0,0))+
+  scale_y_continuous(limits = c(0,0.5), expand = c(0,0))+
+  xlab("Autoritær prædisposition")+
+  ylab("Densitet")+
+  labs(subtitle = "A. Majoriteten")+
+      theme(plot.title = element_text(hjust = 0.5, size = 12, margin=margin(0,0,30,0), family = "CM Roman"))+
+  theme(legend.text=element_text(size=10, family = "CM Roman"), legend.title = element_text(size = 10),
+        axis.text = element_text(size = 10, family = "CM Roman"), text = element_text(family = "CM Roman"))+
+  theme(plot.subtitle = element_text(hjust = 0.5, size = 11, margin=margin(0,0,30,0), family = "CM Roman"))+
+  theme(legend.text=element_text(size=10, family = "CM Roman"), text = element_text(family = "CM Roman"), axis.text = element_text(size=10, family = "CM Roman"))
+
+patchwork  <- p1 | p2
+plot <- patchwork + 
+  plot_annotation(title = "Fordeling på autoritær prædispositioner", theme = theme(plot.title = element_text(size = 12, hjust = 0.5, margin=margin(0,0,15,0)))) & 
+  theme(legend.text = element_text('CM Roman', size = 10), plot.subtitle = element_text(hjust = 0.5, size = 10, margin=margin(0,0,30,0), family = "CM Roman"), axis.title = element_text('CM Roman', size = 10))
+
+#plot <- ggarrange(p1, p2 + rremove("y.title"), legend = "bottom")
+#plot <- annotate_figure(plot, top = text_grob("Fordeling på autoritær prædispositioner", size = 12, hjust = 0.5, family = "CM Roman"))
+print(plot)
+dev.off()
+print(plot)
+rm(samlet_ess_ma, samlet_ess_mu, mu_ma, mu_mu, p1, p2, plot)
+```
+
+
+```{r}
+detach(package:plyr)
+
+mean_year_all <- samlet_ess %>%
+  dplyr::filter(!is.na(PVQ), !is.na(int.year))%>%
+  dplyr::group_by(int.year)%>%
+  summarize(gen = mean(PVQ))
+
+mean_year_group <- samlet_ess %>%
+  dplyr::filter(!is.na(PVQ), !is.na(int.year), int.year != 2020)%>%
+  dplyr::group_by(int.year, dikotom)%>%
+  summarize(gen = mean(PVQ))
+
+mean_year_all$dikotom <- "all"
+
+mean_year <- bind_rows(mean_year_all, mean_year_group)
+
+ggplot(mean_year_group, aes(int.year, gen, color = dikotom))+
+  geom_line()+
+  geom_smooth()+
+
+  scale_color_manual(name = "Respondet gruppe", values = c("majority" = "#641A80FF", "muslim" = "#FE9F6DFF"), labels = c("Majoritet", "Muslimer"))+
+  theme_classic()+
+  theme(legend.position = "bottom")+
+  scale_x_continuous(limits = c(2002,2022), expand = c(0,0), breaks = c(2002, 2005, 2010, 2015, 2020))+
+  scale_y_continuous(limits = c(5,6), expand = c(0,0))+
+  ylab("Gennemsnitlig autoritær prædisposition")+
+  xlab("Interview år")
+
+mean_round_all <- samlet_ess %>%
+  dplyr::filter(!is.na(PVQ), !is.na(essround))%>%
+  dplyr::group_by(essround)%>%
+  summarize(gen = mean(PVQ))
+
+mean_round_group <- samlet_ess %>%
+  dplyr::filter(!is.na(PVQ), !is.na(essround))%>%
+  dplyr::group_by(essround, dikotom)%>%
+  summarize(gen = mean(PVQ))
+
+mean_round_all$dikotom <- "all"
+
+mean_round <- bind_rows(mean_round_all, mean_round_group)
+
+ggplot(mean_round_group, aes(essround, gen, color = dikotom))+
+  geom_line()+
+  geom_smooth()+
+
+  scale_color_manual(name = "Respondet gruppe", values = c("majority" = "#641A80FF", "muslim" = "#FE9F6DFF"), labels = c("Majoritet", "Muslimer"))+
+  theme_classic()+
+  theme(legend.position = "bottom")+
+  #scale_x_continuous(limits = c(2002,2022), expand = c(0,0), breaks = c(2002, 2005, 2010, 2015, 2020))+
+  scale_y_continuous(limits = c(5,6), expand = c(0,0))+
+  ylab("Gennemsnitlig autoritær prædisposition")+
+  xlab("Interview år")
+
+```
