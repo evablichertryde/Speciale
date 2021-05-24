@@ -1,0 +1,99 @@
+---
+title: "Forskel i autoritære prædispositioner"
+author: "Eva Tryde"
+date: "17/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(psych)
+library(car)
+library(ggpubr)
+library(stargazer)
+library(broom)
+library(ggplot2)
+library(performance)
+library(see)
+library(plyr)
+library(viridis)
+library(extrafont)
+loadfonts()
+library(patchwork)
+```
+
+
+```{r data, message=FALSE}
+ess <- read.csv("../data/ess_treated.csv")
+auto  <- read.csv("../data/auto_scale.csv")
+```
+
+```{r, message=FALSE}
+ess <- ess %>%
+  filter(cntry %in% c(
+  "NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT",
+  "FI", "GR", "CH", "IE", "BE"))%>%
+  filter(dikotom %in% c("muslim", "majority"))%>%
+  dplyr::select(id, cntry, dikotom, rlgdgr, income, educ.ba, female, age, essround, int.year)
+
+auto <- auto %>%
+  dplyr::select(id, cntry, PVQ)
+
+samlet_ess <- left_join(ess, auto, by = c("id", "cntry"))
+```
+
+
+```{r}
+ttest <- stats::t.test(PVQ ~ dikotom, data = samlet_ess, alternative = "less", var.equal = FALSE)
+ttest$statistic
+ttest
+
+tapply(samlet_ess$PVQ, samlet_ess$dikotom, mean, na.rm=TRUE)
+
+tapply(samlet_ess$PVQ, samlet_ess$dikotom, sd, na.rm=TRUE)
+```
+
+
+```{r}
+majoritet <- samlet_ess %>%
+  filter(dikotom == "majority")
+```
+
+
+```{r fig.height=3.5, fig.width=7}
+mu <- ddply(samlet_ess, "dikotom", summarise, grp.mean=mean(PVQ, na.rm=TRUE))
+
+png(file="../figures/analyse 1/denisity muslim + majoritet overlap.png", width = 7, height = 3.5, units = "in", res=500)
+
+plot <-ggplot(samlet_ess, aes(x=PVQ)) +
+  geom_density(aes(fill = dikotom), alpha = 0.4)+
+    scale_fill_manual(name = "", values = c("majority" = "#641A80FF", "muslim" = "#FE9F6DFF"), labels = c("Majoritet", "Muslimsk baggrund"))+
+
+ geom_vline(data=mu, aes(xintercept=grp.mean, color=dikotom), linetype="dashed", size = 1)+
+  scale_color_manual(name = "Gennemsnitlig værdi:", values=c("majority" = "black", "muslim" = "blue"), labels = c("Majoritet", "Muslimsk baggrund"))+
+  theme_classic()+
+  #scale_color_viridis(option = "A", begin = 0.30, end = 0.80, discrete = TRUE)+
+  scale_x_continuous(limits = c(0,11), expand = c(0,0))+
+  scale_y_continuous(limits = c(0,0.5), expand = c(0,0))+
+ xlab("Autoritær prædisposition")+
+  ylab("Densitet")+
+  theme(legend.position = "bottom")+
+  labs(title = "")+
+  theme(plot.title = element_text(hjust = 0.5, size = 12, margin=margin(0,0,30,0), family = "CM Roman"))+
+  theme(legend.text=element_text(size=10, family = "CM Roman"), legend.title = element_text(size = 10),
+        axis.text = element_text(size = 10, family = "CM Roman"), text = element_text(family = "CM Roman"))
+print(plot)
+dev.off()
+print(plot)
+
+```
+
+
+```{r}
+
+```
+
