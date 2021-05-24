@@ -1,3 +1,45 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(psych)
+library(car)
+library(ggpubr)
+library(stargazer)
+library(broom)
+library(ggplot2)
+library(performance)
+library(see)
+library(plyr)
+library(viridis)
+library(extrafont)
+loadfonts()
+library(patchwork)
+```
+
+
+```{r data, message=FALSE}
+ess <- read.csv("../data/ess_treated.csv")
+auto  <- read.csv("../data/auto_scale.csv")
+```
+
+```{r, message=FALSE}
+ess <- ess %>%
+  filter(cntry %in% c(
+  "NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT",
+  "FI", "GR", "CH", "IE", "BE"))%>%
+  filter(dikotom %in% c("muslim", "majority"))%>%
+  dplyr::select(id, cntry, dikotom, rlgdgr, income, educ.ba, female, age, essround, int.year)
+
+auto <- auto %>%
+  dplyr::select(id, cntry, PVQ)
+
+samlet_ess <- left_join(ess, auto, by = c("id", "cntry"))
+```
+
+
 ```{r}
 ttest <- stats::t.test(income ~ dikotom, data = samlet_ess, var.equal = FALSE)
 ttest$statistic
