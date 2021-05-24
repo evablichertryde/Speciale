@@ -1,0 +1,29 @@
+```{r}
+ttest <- stats::t.test(income ~ dikotom, data = samlet_ess, var.equal = FALSE)
+ttest$statistic
+ttest
+
+tapply(samlet_ess$income, samlet_ess$dikotom, mean, na.rm=TRUE)
+
+tapply(samlet_ess$income, samlet_ess$dikotom, sd, na.rm=TRUE)
+```
+```{r}
+ttest <- stats::t.test(educ.ba ~ dikotom, data = samlet_ess, var.equal = FALSE)
+ttest$statistic
+ttest
+
+tapply(samlet_ess$educ.ba, samlet_ess$dikotom, mean, na.rm=TRUE)
+
+tapply(samlet_ess$educ.ba, samlet_ess$dikotom, sd, na.rm=TRUE)
+```
+
+
+```{r}
+ttest <- stats::t.test(age ~ dikotom, data = samlet_ess, var.equal = FALSE)
+ttest$statistic
+ttest
+
+tapply(samlet_ess$age, samlet_ess$dikotom, mean, na.rm=TRUE)
+
+tapply(samlet_ess$age, samlet_ess$dikotom, sd, na.rm=TRUE)
+```
