@@ -60,8 +60,8 @@ rm(ess, auto)
 
 ```{r}
 lm <- lmrob(PVQ ~ dikotom, data = samlet_ess)
-#lm_m <- lm(PVQ ~ dikotom + rlgdgr + female + income + educ.ba + age, data = samlet_ess)
-lm_m_rob <- lmrob(PVQ ~ dikotom + rlgdgr + female + income + educ.ba + age, data = samlet_ess)
+#lm_m <- lm(PVQ ~ dikotom + rlgdgr + female + income + educ.ba + age + cntry, data = samlet_ess)
+lm_m_rob <- lmrob(PVQ ~ dikotom + rlgdgr + female + income + educ.ba + age + cntry, data = samlet_ess)
 
 stargazer(lm, lm_m_rob, type = "latex", single.row = FALSE)
 ```
