@@ -123,9 +123,7 @@ print(run)
 ```{r}
 start <- Sys.time()
 cdat_1c <- cplot(model_1c_ny_trussel_ro, "trussel", "PVQ",  
-              what = "effect", 
-              #xlim = c(0,10), 
-              #xvals = prediction::seq_range(0:10, n = 25),
+              what = "effect",
               draw = FALSE)
 saveRDS(cdat_1c, file="../../figures/analyse 2/cdat_1c.RDS")
 end <- Sys.time()
@@ -138,12 +136,13 @@ print(run)
 # Samle grafer
 ```{r}
 p_model_1_ny_trussel_ro <- ggplot(cdat_1, aes(x = as.factor(xvals), y = yvals, color = xvals)) +   
-  geom_errorbar(aes(ymin = lower, ymax = upper, color = xvals), width=.1, alpha  = 0.9) +
+  geom_errorbar(aes(ymin = lower, ymax = upper, color = xvals), width=.1) +
   geom_point()+
   geom_hline(yintercept = 0, linetype = "dashed")+
-  coord_cartesian(ylim = c(-0.05,0.4))+
+  coord_cartesian(ylim = c(-0.1,0.35))+
   scale_color_manual(name = "", values = c("0" = "#13306dff", "1" = "#f68f46ff"))+
-  scale_x_discrete(labels = c("0" = "Ingen dødelige \nterrorangreb", "1" = "Dødelige \nterrorangreb"))+
+  scale_x_discrete(labels = c("0" = "Ingen dødelige terrorangreb \ndet foregående år", "1" = "Dødelige terrorangreb \ndet foregående år"))+
+
   theme_classic()+
   theme(legend.position = "none")+
   xlab("")+
@@ -158,12 +157,12 @@ p_model_1_ny_trussel_ro <- ggplot(cdat_1, aes(x = as.factor(xvals), y = yvals, c
 print(p_model_1_ny_trussel_ro)
 
 p_model_1c_ny_trussel_ro <- ggplot(cdat_1c, aes(x = as.factor(xvals), y = yvals, color = xvals)) +   
-  geom_errorbar(aes(ymin = lower, ymax = upper, color = xvals), width=.1, alpha  = 0.9) +
+  geom_errorbar(aes(ymin = lower, ymax = upper, color = xvals), width=.1) +
   geom_point()+
   geom_hline(yintercept = 0, linetype = "dashed")+
-  coord_cartesian(ylim = c(-0.05,0.4))+
+  coord_cartesian(ylim = c(-0.1,0.35))+
   scale_color_manual(name = "", values = c("0" = "#13306dff", "1" = "#f68f46ff"))+
-  scale_x_discrete(labels = c("0" = "Ingen dødelige \nterrorangreb", "1" = "Dødelige \nterrorangreb"))+
+  scale_x_discrete(labels = c("0" = "Ingen dødelige terrorangreb \ndet foregående år", "1" = "Dødelige terrorangreb \ndet foregående år"))+
   theme_classic()+
   theme(legend.position = "none")+
   xlab("")+
@@ -186,5 +185,68 @@ dikotom_model_1 <- annotate_figure(dikotom_model_1,
 dikotom_model_1
 dev.off()
 dikotom_model_1
+```
 
+```{r}
+library(patchwork)
+
+
+p_model_1_ny_trussel_ro <- 
+  ggplot(cdat_1, aes(x = as.factor(xvals), y = yvals, color = xvals)) + 
+  geom_errorbar(aes(ymin = lower, ymax = upper), color = "#13306dff", width=.1, alpha  = 0.9) +
+  geom_point(color = "#13306dff")+
+  geom_line(aes(group = 1),  color = "#13306dff",  linetype = "dashed")+
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  coord_cartesian(ylim = c(-0.1,0.35))+
+  scale_color_manual(name = "", values = c("0" = "#13306dff", "1" = "#f68f46ff"))+
+  scale_x_discrete(labels = c("0" = "Ingen dødelige \nterrorangreb", "1" = "Dødelige \nterrorangreb"))+
+  theme_classic()+
+  theme(legend.position = "none")+
+  xlab("")+
+  ylab("Marginal effekt af \nautoritær prædisposition")+
+  labs(title = "", subtitle = "A. Uden kontrolvariabler")+
+  theme(text=element_text(family = "CM Roman", color = "black"))+
+  theme(plot.title = element_text(family = "CM Roman", size = 13),
+        plot.subtitle = element_text(family = "CM Roman", size = 12),
+        axis.text.y = element_text(family = "CM Roman", size = 10),
+        axis.text.x = element_text(family = "CM Roman", size = 11, color = "black"),
+        axis.title = element_text(family = "CM Roman", size = 11))
+print(p_model_1_ny_trussel_ro)
+
+
+p_model_1c_ny_trussel_ro <- 
+  ggplot(cdat_1c, aes(x = as.factor(xvals), y = yvals)) +   
+  geom_errorbar(aes(ymin = lower, ymax = upper), color = "#f68f46ff", width=.1, alpha  = 0.9) +
+  geom_point(color = "#f68f46ff")+
+  geom_line(aes(group = 1),  color = "#f68f46ff",  linetype = "dashed")+
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  coord_cartesian(ylim = c(-0.1,0.35))+
+  scale_color_manual(name = "", values = c("0" = "#13306dff", "1" = "#f68f46ff"))+
+  scale_x_discrete(labels = c("0" = "Ingen dødelige \nterrorangreb", "1" = "Dødelige \nterrorangreb"))+
+  theme_classic()+
+  theme(legend.position = "none")+
+  xlab("")+
+  ylab("")+
+  labs(title = "", subtitle = "B. Med kontrolvariabler")+
+  theme(text=element_text(family = "CM Roman", color = "black"))+
+  theme(plot.title = element_text(family = "CM Roman", size = 13),
+        plot.subtitle = element_text(family = "CM Roman", size = 12),
+        axis.text.y = element_text(family = "CM Roman", size = 10),
+        axis.text.x = element_text(family = "CM Roman", size = 11, color = "black"),
+        axis.title = element_text(family = "CM Roman", size = 11))
+print(p_model_1c_ny_trussel_ro)
+```
+
+
+```{r}
+png(file="../../figures/analyse 2/model 1.png", width = 7.5, height = 4, units = "in", res=500)
+
+dikotom_model_1 <- ggarrange(p_model_1_ny_trussel_ro + p_model_1c_ny_trussel_ro, nrow = 1)
+
+dikotom_model_1 <- annotate_figure(dikotom_model_1,
+                                   top = text_grob("Gennemsnitlig marginal effekt af interaktion på grad af intolerance ift. homoseksuelle", color = "black", size = 14, family = "CM Roman"),
+                                   bottom = text_grob("Dikotom trussel variable, som angiver hvorvidt nogle er døde i et højre orienteret terrorangreb \nrettet mod muslimer og immigranter, det foregårende år",color = "black", size = 10, family = "CM Roman",hjust = 1, x = 1))
+dikotom_model_1
+dev.off()
+dikotom_model_1
 ```
