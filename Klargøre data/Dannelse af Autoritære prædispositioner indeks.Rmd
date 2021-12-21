@@ -1,0 +1,143 @@
+---
+title: "Dannelse af Autoritære prædispositioner indeks"
+author: "Eva Tryde"
+date: "1/5/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r hente-pakker, message=FALSE, include=FALSE, echo=FALSE}
+library(tidyverse) # Kan rense det nye data
+library(scales)
+library(psych)
+library(viridis)
+library(ggplot2)
+library(extrafont)
+loadfonts()
+```
+
+```{r}
+ess <- read.csv("../data/ess_treated.csv")
+```
+
+
+```{r}
+auto <- ess %>%
+  select(id, cntry, respondent, dikotom, int.year, essround, c("ipcrtiv":"impfun"))%>%
+  rename(v1 = ipcrtiv, v2 =imprich, v3 = ipeqopt, v4 = ipshabt, v5 = impsafe, v6 = impdiff, v7 = ipfrule, v8 = ipudrst, v9 = ipmodst, v10 = ipgdtim, v11 = impfree, v12 = iphlppl, v13 = ipsuces, v14 = ipstrgv, v15 = ipadvnt, v16 = ipbhprp, v17 = iprspot, v18 = iplylfr, v19 = impenv, v20 = imptrad, v21 = impfun)%>%
+  select(id, cntry, respondent, dikotom, essround, int.year, v5, v14, v7, v16, v9, v20, v1, v11, v6, v15)
+```
+
+```{r funktion til at ændre auto værdi retning}
+Flip <- function(x) 6 - x
+auto <- mutate_at(auto,.vars = -c(1, 2, 3, 4, 5, 6), Flip )
+```
+
+```{r}
+auto_na <- auto %>%
+  select(id, v5, v14, v7, v16, v9, v20, v1, v11, v6, v15)
+
+auto_na <- auto_na%>%
+  mutate(Na_no = rowSums(is.na(auto_na)))%>%
+  select(id, Na_no)
+
+auto <- full_join(auto, auto_na, by = "id")
+rm(auto_na)
+
+```
+
+
+```{r}
+auto <- auto %>%
+ filter(Na_no == 0)%>% 
+  rowwise()%>%
+  mutate(security = sum(c(v5, v14)), 
+         conformity = sum(c(v7, v16)),
+         tradition = sum(c(v9, v20)),
+         selfdirection = sum(c(v1, v11)),
+         stimulation = sum(c(v6, v15)))%>%
+  mutate(conservation = sum(c(conformity, tradition, security)), opneness = sum(c(selfdirection, stimulation)))
+```
+
+```{r}
+conservation.item <- auto%>%
+  select(conformity, tradition, security)
+
+security.item <- auto%>%
+  select(v5, v14)
+
+conformity.item <- auto%>%
+  select(v7, v16)
+
+tradition.item <- auto%>%
+  select(v9, v20)
+
+opneness.item <- auto%>%
+  select(selfdirection, stimulation)
+```
+
+
+```{r}
+auto$conservation_10 <- scales::rescale(auto$conservation, to = c(0,10))
+auto$opneness_10 <- scales::rescale(auto$opneness, to = c(0,10))
+
+auto <- auto%>%
+  rowwise()%>%
+  mutate(PVQ = conservation-opneness, PVQ_10 = conservation_10-opneness_10)%>%
+  filter(cntry %in% c("NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT", "FI", "GR", "CH", "IE", "BE"))%>%
+  select(-c("v5":"opneness_10"))
+
+auto$PVQ <- scales::rescale(auto$PVQ, to = c(0,10))
+auto$PVQ_10 <- scales::rescale(auto$PVQ_10, to = c(0,10))
+
+auto$auto_cat[auto$PVQ >= 7.5] <- "very auto"
+auto$auto_cat[auto$PVQ <= 2.5] <- "very lib"
+auto$auto_cat[auto$PVQ > 2.5 & auto$PVQ < 5] <- "lib"
+auto$auto_cat[auto$PVQ >= 5 & auto$PVQ < 7.5] <- "auto"
+
+auto$auto_cat_10[auto$PVQ_10 >= 7.5] <- "very auto"
+auto$auto_cat_10[auto$PVQ_10 <= 2.5] <- "very lib"
+auto$auto_cat_10[auto$PVQ_10 > 2.5 & auto$PVQ_10 < 5] <- "lib"
+auto$auto_cat_10[auto$PVQ_10 >= 5 & auto$PVQ_10 < 7.5] <- "auto"
+```
+
+```{r}
+auto <- auto %>%
+  mutate(label = case_when(
+    cntry == "AT" ~ "Østrig",
+    cntry == "NO" ~ "Norge",
+    cntry == "SE" ~ "Sverige",
+    cntry == "DK" ~ "Danmark",
+    cntry == "DE" ~ "Tyskland",
+    cntry == "IT" ~ "Italien",
+    cntry == "ES" ~ "Spanien",
+    cntry == "NL" ~ "Nederland",
+    cntry == "FR" ~ "Frankrig",
+    cntry == "PT" ~ "Portugal",
+    cntry == "FI" ~ "Finland",
+    cntry == "GR" ~ "Grækenland",
+    cntry == "CH" ~ "Schweiz",
+    cntry == "IE" ~ "Irland",
+    cntry == "BE" ~ "Belgium",
+    cntry == "GB" ~ "United Kingdom",
+    cntry == "GR" ~ "Greece"))%>%
+  filter(!is.na(label))
+```
+
+
+```{r}
+auto_scale <- auto %>%
+  select(-c(PVQ, auto_cat))%>%
+  rename(PVQ = PVQ_10, auto_cat = auto_cat_10)
+  
+
+auto_indeks<- auto
+```
+
+
+```{r}
+write_csv(auto_scale, "../data/auto_scale.csv")
+write_csv(auto_indeks, "../data/auto_indeks.csv")
+```

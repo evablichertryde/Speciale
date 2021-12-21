@@ -1,0 +1,179 @@
+---
+title: "tjek korrelation mellem auto skala og manifestation"
+output: html_notebook
+---
+
+```{r hente-pakker, message=FALSE, include=FALSE, echo=FALSE}
+library(tidyverse)
+```
+
+```{r, message=FALSE, include=FALSE, echo=FALSE}
+ess <- read_csv("../data/ess_treated.csv")
+auto <- read_csv("../data/auto_scale.csv")
+rtv_merge <- read_csv("../../RTV trussel/RTV/data/rtv_merge.csv")
+```
+
+```{r}
+ess <- ess %>%
+  select(-c(X1))%>%
+  mutate(label = case_when(
+    cntry == "AT" ~ "Østrig",
+    cntry == "NO" ~ "Norge",
+    cntry == "SE" ~ "Sverige",
+    cntry == "DK" ~ "Danmark",
+    cntry == "DE" ~ "Tyskland",
+    cntry == "IT" ~ "Italien",
+    cntry == "ES" ~ "Spanien",
+    cntry == "NL" ~ "Nederland",
+    cntry == "FR" ~ "Frankrig",
+    cntry == "PT" ~ "Portugal",
+    cntry == "FI" ~ "Finland",
+    cntry == "GR" ~ "Grækenland",
+    cntry == "CH" ~ "Schweiz",
+    cntry == "IE" ~ "Irland",
+    cntry == "BE" ~ "Belgium",
+    cntry == "GB" ~ "United Kingdom"))
+
+auto <- auto %>%
+  select(id, PVQ, auto_cat)
+
+samlet <- left_join(ess, auto, by = "id")
+
+samlet <- samlet %>%
+  filter(!is.na(label))
+```
+
+
+```{r}
+samlet <- samlet %>%
+  filter(!is.na(label))
+```
+
+```{r}
+tabl <- function(...) table(..., useNA='ifany')
+
+tabl(samlet$freehms)
+```
+```{r}
+library(ggplot2)
+```
+
+```{r}
+ggplot(samlet, aes(PVQ))+
+  geom_density(aes(color = dikotom))
+```
+
+
+```{r}
+rtv_merge <- rtv_merge %>%
+  rename(year = merge_year)%>%
+  filter(year >= 2002)
+```
+
+
+```{r}
+samlet$year<- samlet$int.year
+samlet_rtv <- left_join(samlet, rtv_merge, by = c("cntry", "year"))
+```
+
+
+```{r}
+samlet_rtv_al_de <- samlet_rtv%>%
+  select(c(id, al_mu:n_de_mu_im))
+
+samlet_rtv_al_de[is.na(samlet_rtv_al_de)] <- 0
+
+samlet_rtv <- samlet_rtv%>%
+  select(-c(al_mu:n_de_mu_im))
+
+samlet_rtv <- left_join(samlet_rtv, samlet_rtv_al_de, by = "id")
+rm(samlet_rtv_al_de)
+```
+
+
+```{r}
+table(samlet_rtv$year, samlet_rtv$cntry)
+```
+```{r}
+library(survey) # estimation
+samlet_rtv$anweight <- samlet_rtv$pspwght * samlet_rtv$pweight
+```
+
+
+```{r, echo = FALSE, include=FALSE}
+library(rms)
+library(Publish)
+```
+
+```{r}
+samlet_rtv$freehms_d[samlet_rtv$freehms == 5] <- 1
+samlet_rtv$freehms_d[samlet_rtv$freehms %in% c(1,2,3,4)] <- 0
+```
+
+
+```{r}
+simple_reg <- samlet_rtv%>%
+  select(id, freehms_d, freehms, PVQ, auto_cat, dikotom, al_mu_im_3, n_de_mu_im_3, cntry)
+#simple_reg <- na.omit(samlet_rtv[, c("freehms_d", "PVQ", "auto_cat", "dikotom")])
+simple_reg_dik <- simple_reg%>%
+  filter(dikotom == "muslim")
+```
+
+```{r}
+logreg_al <- glm(freehms_d ~ al_mu_im_3 * PVQ + dikotom + cntry, data=samlet_rtv, family="binomial")
+summary(logreg_al)
+
+logreg_de <- glm(freehms_d ~ n_de_mu_im_3 * PVQ + dikotom, data=samlet_rtv, family="binomial")
+summary(logreg_de)
+```
+
+
+```{r}
+dik_logreg_al <- glm(freehms_d ~ al_mu_im_3 * PVQ, data=simple_reg_dik, family="binomial")
+summary(dik_logreg_al)
+
+dik_logreg_de <- glm(freehms_d ~ n_de_mu_im_3 * PVQ, data=simple_reg_dik, family="binomial")
+summary(dik_logreg_de)
+
+```
+
+
+```{r}
+library(sjPlot)
+library(sjmisc)
+library(ggplot2)
+data(efc)
+theme_set(theme_sjplot())
+```
+
+
+```{r}
+plot_model(dik_logreg_al, type = "pred", terms = c("PVQ", "al_mu_im_3[0,10]"))
+
+```
+```{r}
+dikotom_auto <- samlet_rtv %>%
+  filter(dikotom == "muslim", !is.na(freehms))
+
+dikotom_auto$PVQ_na[is.na(dikotom_auto$PVQ)] <- TRUE
+dikotom_auto$PVQ_na[!is.na(dikotom_auto$PVQ)] <- FALSE
+```
+```{r}
+table(dikotom_auto$PVQ_na)
+```
+```{r}
+library(ggplot2)
+```
+
+
+```{r}
+tabl(simple_reg_dik$cntry, simple_reg_dik$al_mu_im_3)
+```
+
+
+```{r}
+ggplot(simple_reg_dik, aes(x = PVQ, y = freehms_d))+
+  geom_smooth(method = "glm", method.args = list(binomial(link = "logit")), se = FALSE) +
+  facet_wrap(~ cntry)
+```
+

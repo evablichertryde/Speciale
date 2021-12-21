@@ -1,0 +1,319 @@
+---
+title: "analyse 2 antagelser"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(psych)
+library(car)
+library(ggpubr)
+library(stargazer)
+library(broom)
+library(ggplot2)
+library(performance)
+library(see)
+library(qqplotr)
+library(reshape2)
+library(robustbase)
+library(estimatr)
+```
+
+```{r data, message=FALSE}
+ess <- read.csv("../data/ess_treated.csv")
+auto  <- read.csv("../data/auto_scale.csv")
+rtv_merge <- read_csv("../../RTV trussel/RTV/data/rtv_merge.csv")
+
+```
+
+```{r, message=FALSE}
+rtv_merge <- rtv_merge %>%
+  rename(year = merge_year)%>%
+  filter(year >= 2002)
+ess$year<- ess$int.year
+
+flip <- function(x){
+  6 - x
+}
+
+ess <- mutate_at(ess, .vars=c("livecntr"), flip)
+ess$livecntr[ess$brncntr != 2] <- 0
+
+ess$livecntr_f[ess$livecntr == 0] <- "Født i landet"
+ess$livecntr_f[ess$livecntr == 1] <- "Mere end 20 år"
+ess$livecntr_f[ess$livecntr == 2] <- "Mellem 11 og 20 år"
+ess$livecntr_f[ess$livecntr == 3] <- "Mellem 6 og 10 år"
+ess$livecntr_f[ess$livecntr %in% c(4,5)] <- "Mellem 0 og 5 år"
+
+ess <- ess %>%
+  filter(cntry %in% c(
+  "NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT",
+  "FI", "GR", "CH", "IE", "BE", "LU", "IS"))%>%
+  filter(dikotom == "muslim")%>%
+  dplyr::select(id, cntry, livecntr_f, rlgdgr, income, educ.ba, female, age, freehms, year, essround)
+
+auto <- auto %>%
+  dplyr::select(id, cntry, PVQ, auto_cat, essround)
+
+samlet_rtv <- left_join(ess, rtv_merge, by = c("cntry", "year"))
+
+samlet_ess <- left_join(samlet_rtv, auto, by =c("id", "cntry", "essround"))
+
+samlet_ess <- samlet_ess%>%
+  dplyr::select(-c(V2:al_mu_im_3_pop))
+samlet_ess$income[samlet_ess$income %in% c(11,12)] <- NA
+```
+
+# Uden kontrol variabler
+
+```{r}
+model_1_no_control <- lm(freehms ~ PVQ*n_de_mu_im_3_pop, data = samlet_ess)
+model_1_no_control_rob <- lmrob(freehms ~ PVQ*n_de_mu_im_3_pop, data = samlet_ess)
+
+
+stargazer(model_1_no_control, model_1_no_control_rob, type = "text")
+
+
+
+```
+
+-   test for heteroskadasticitet
+-   normaltfordelte fejlled
+-   outliers
+
+linearitet er antaget givet interaktion og samme med multikonlianritet
+
+## preamble
+
+```{r}
+model_1_no_control_df <- samlet_ess %>%
+  filter( !is.na(freehms) & !is.na(n_de_mu_im_3_pop) & !is.na(PVQ))%>%
+  dplyr::select(c("freehms", "PVQ", "n_de_mu_im_3_pop"))
+model_1_no_control_df$fit.r <- model_1_no_control$residuals
+model_1_no_control_df$fit.p <- model_1_no_control$fitted.values
+```
+
+```{r}
+plot(model_1_no_control)
+```
+
+## homoskedadastitet
+
+```{r}
+ggplot(model_1_no_control_df, aes(fit.p, fit.r)) +
+  geom_jitter(shape = 1) +
+  geom_hline(yintercept = 0, color = "red") +
+  ylab("Residuals") +
+  xlab("Fitted")
+
+check_heteroscedasticity(model_1_no_control)
+
+```
+
+fremgår både meget tydeligt i grafisk form og i test. Antagelsen holder ikke, og derfor benytter jeg robuste standart fejl, som også er normen med interaktionsmodeller
+
+## normaltfordelte fejlled
+
+```{r}
+p1 <- ggplot(model_1_no_control_df, aes(fit.r)) +
+  geom_histogram(bins = 10, color = "black", fill = "white")
+
+p2 <- ggplot(model_1_no_control_df, aes(fit.r)) +
+  geom_density() +
+  stat_function(fun = dnorm, args = list(mean = mean(model_1_no_control_df$fit.r),
+                                         sd = sd(model_1_no_control_df$fit.r)),
+                color = "dodgerblue", size = 2, alpha = .5)
+
+p3 <- ggplot(model_1_no_control_df, aes("", fit.r)) +
+  geom_boxplot() 
+
+p4 <- ggplot(model_1_no_control_df, aes(sample = fit.r)) +
+  stat_qq(shape = 1) +
+  stat_qq_line(size = 1.5, alpha = .5)
+
+p_model_1_no_control <- ggarrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
+p_model_1_no_control
+```
+
+Har ikke normaltfordelte fejldled - ikke del af Gause Markow. Løse af roubst standart fejl
+
+## Outliers
+
+```{r}
+check_outliers(model_1_no_control)
+plot(check_outliers(model_1_no_control))
+```
+
+Ingen outliers
+
+## samlet model tjek
+
+### uden robuste standart fejl
+
+```{r}
+check_model(model_1_no_control)
+
+```
+
+# Med kontrolvariabler
+
+```{r}
+model_1_control <- lm(freehms ~ PVQ*n_de_mu_im_3_pop + rlgdgr + income + educ.ba + female + age + livecntr_f, data = samlet_ess)
+summary(model_1_control)
+model_1_control_rob <- lmrob(freehms ~ PVQ*n_de_mu_im_3_pop + rlgdgr + income + educ.ba + female + age + livecntr_f, data = samlet_ess)
+summary(model_1_control_rob)
+stargazer(model_1_control, model_1_control_rob)
+```
+
+preamble til OLS test
+
+```{r}
+model_1_control_df <- samlet_ess %>%
+  filter(!is.na(rlgdgr) & !is.na(income) & !is.na(educ.ba) & !is.na(female) & !is.na(age) & !is.na(livecntr_f) & !is.na(freehms) & !is.na(n_de_mu_im_3_pop) & !is.na(PVQ))%>%
+  dplyr::select(c("freehms", "PVQ", "n_de_mu_im_3_pop", "rlgdgr", "income", "educ.ba", "female", "age", "livecntr_f"))
+model_1_control_df$fit.r <- model_1_control$residuals
+model_1_control_df$fit.p <- model_1_control$fitted.values
+```
+
+## Model et med kontrolvariabler
+
+-   test for linearitet - mellem kontinuerlige kontrol variabler og PVQ, kan ikke test for kategoriers var og interaktionsled
+-   test for heteroskadasticitet Variabler som er metriske: rlgdgr, income, age - tjekke linaritet ift. til freehms
+-   normaltfordelte fejlled
+-   outliers
+-   mulitkonilaritetet
+
+linearitet er antaget givet interaktion
+
+## linearitet
+
+```{r}
+residualPlots(model_1_control)
+```
+
+```{r}
+model_1_control_df %>%
+  melt(measure.vars = c("rlgdgr", "income", "age", "fit.p"))%>%
+  ggplot(aes(value, fit.r, group = variable)) +
+  geom_point(shape = 1) +
+  geom_smooth(method = loess) +
+  geom_hline(yintercept = 0) +
+  facet_wrap(~ variable, scales = "free")
+```
+
+Indkomst er ikke lineær og skal derfor transformeres
+
+## homoskedadastitet
+
+```{r}
+ggplot(model_1_control_df, aes(fit.p, fit.r)) +
+  geom_jitter(shape = 1) +
+  geom_hline(yintercept = 0, color = "red") +
+  ylab("Residuals") +
+  xlab("Fitted")
+```
+
+```{r}
+check_heteroscedasticity(model_1_control)
+```
+
+Heteroscedasticity er ikke overholds . køre med robust standart fejl
+
+## normaltfordelt fejlled
+
+```{r}
+model_1_control_df <- model_1_control_df %>%
+  mutate(gruppe = case_when(
+    educ.ba == 0 & female == 0 ~ "Mand uden bachelor",
+    educ.ba == 0 & female == 1 ~ "Kvinde uden bachelor",
+    educ.ba == 1 & female == 0 ~ "Mand med bachelor",
+    educ.ba == 1 & female == 1 ~ "Kvinde med bachelor"
+  ))
+```
+
+### Overordent normal fordeling på tværs af alle variabler
+
+```{r}
+p1 <- ggplot(model_1_control_df, aes(fit.r)) +
+  geom_histogram(bins = 10, color = "black", fill = "white")
+
+p2 <- ggplot(model_1_control_df, aes(fit.r)) +
+  geom_density() +
+  stat_function(fun = dnorm, args = list(mean = mean(model_1_control_df$fit.r),
+                                         sd = sd(model_1_control_df$fit.r)),
+                color = "dodgerblue", size = 2, alpha = .5)
+
+p3 <- ggplot(model_1_control_df, aes("", fit.r)) +
+  geom_boxplot() 
+
+p4 <- ggplot(model_1_control_df, aes(sample = fit.r)) +
+  stat_qq(shape = 1) +
+  stat_qq_line(size = 1.5, alpha = .5)
+
+p_model_1_control <- ggarrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
+p_model_1_control
+```
+
+### fordellign af fejleding på forskellige kombination af kategoriske varialber
+
+```{r}
+bw = 0.5
+n_obs = sum(!is.na(model_1_control_df$fit.r))
+xbreaks = seq(-5,5,1) 
+ybreaks = seq(0,900,300) 
+
+
+g <- 
+  ggplot(model_1_control_df, aes(fit.r)) + 
+  geom_histogram(aes(y = ..density..), binwidth = bw, color = "black", fill = "white") +
+  stat_function(fun = dnorm, args = list(mean = mean(model_1_control_df$fit.r), sd = sd(model_1_control_df$fit.r)))+
+  theme_minimal()+
+  scale_x_continuous(limits = c(-5,5), breaks = xbreaks)+ 
+  scale_y_continuous("Density", sec.axis = sec_axis(trans = ~ . * bw * n_obs, name = "Counts", breaks = ybreaks))+ 
+    facet_grid(vars(livecntr_f), vars(gruppe))
+
+g
+
+```
+
+```{r}
+shapiro.test(model_1_control$residuals)
+```
+
+Normalt fordedelte fejlled er ikke overholdt grafisk eller ifølge Shapiro-Wilk normality test. del af problemer med normalt fordelt fejlled forsvinder med robuste standart fejl
+
+## ingen betydningsfuld outliers
+
+```{r}
+check_outliers(model_1_no_control)
+```
+
+ikke problematisk
+
+## multikollinaritet
+
+```{r}
+check_collinearity(model_1_control)
+```
+
+```{r}
+check_model(model_1_control)
+```
+
+```{r}
+check_autocorrelation(model_1_control)
+check_collinearity(model_1_control)
+check_heteroscedasticity(model_1_control)
+check_outliers(model_1_control)
+plot(model_1_control)
+residualPlots(model_1_control)
+
+```
+
+```{r}
+
+```

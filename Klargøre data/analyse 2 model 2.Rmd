@@ -1,0 +1,434 @@
+---
+title: "endelig analyse"
+author: "Eva Tryde"
+date: "10/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(effects)
+library(stargazer)
+library(knitr)
+library(ggplot2) 
+library(jtools)
+library(interplot)
+library(statisticalModeling)
+library(margins)
+library(psych)
+```
+
+## Including Plots
+
+```{r data, message=FALSE}
+ess <- read.csv("../data/ess_treated.csv")
+auto  <- read.csv("../data/auto_scale.csv")
+rtv_merge <- read_csv("../../RTV trussel/RTV/data/rtv_merge.csv")
+```
+
+```{r, message=FALSE}
+rtv_merge <- rtv_merge %>%
+  rename(year = merge_year)%>%
+  filter(year >= 2002)
+
+ess$year<- ess$int.year
+flip <- function(x){
+  6 - x
+}
+ess <- mutate_at(ess, .vars=c("livecntr"), flip)
+ess$livecntr[ess$brncntr != 2] <- 0
+ess <- ess %>%
+  filter(cntry %in% c(
+  "NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT",
+  "FI", "GR", "CH", "IE", "BE", "LU", "IS"))%>%
+  filter(dikotom == "muslim")%>%
+  dplyr::select(essround, id, cntry, mnrgtjb, rlgdgr, year, income, educ.ba, female, age, livecntr)
+
+samlet_rtv <- left_join(ess, rtv_merge, by = c("cntry", "year"))
+
+auto <- auto %>%
+  dplyr::select(id, cntry, PVQ, auto_cat, essround)
+
+samlet_ess <- left_join(samlet_rtv, auto, by =c("id", "cntry", "essround"))
+```
+
+```{r}
+samlet_ess <- samlet_ess%>%
+  dplyr::select(-c(V2:al_mu_im_3_pop))
+samlet_ess$income[samlet_ess$income %in% c(11,12)] <- NA
+```
+
+```{r}
+rm(auto, ess, rtv_merge, samlet_rtv, flip)
+```
+
+```{r}
+samlet_ess$livecntr_f[samlet_ess$livecntr == 0] <- "Født i landet"
+samlet_ess$livecntr_f[samlet_ess$livecntr == 1] <- "Mere end 20 år"
+samlet_ess$livecntr_f[samlet_ess$livecntr == 2] <- "Mellem 11 og 20 år"
+samlet_ess$livecntr_f[samlet_ess$livecntr == 3] <- "Mellem 6 og 10 år"
+samlet_ess$livecntr_f[samlet_ess$livecntr %in% c(4,5)] <- "Mellem 0 og 5 år"
+```
+
+```{r}
+model_2_no_control <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop, data = samlet_ess)
+model_2_control <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + rlgdgr + income + educ.ba + female + age + livecntr_f, data = samlet_ess)
+```
+
+```{r}
+stargazer(model_2_no_control, model_2_control)
+```
+
+```{r}
+library(ggpubr)
+```
+
+```{r}
+plot_model_2_no_control <- interplot(m = model_2_no_control, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = TRUE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(limits =c(-3, 3.5), breaks=c(-3, -2, -1, 0, 1, 2, 3, 4))+
+  theme_minimal()+
+  xlab("Autoritær prædisposition")+
+  ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Uden kontrol variabler")
+
+plot_model_2_control <- interplot(m = model_2_control, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = TRUE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-3, -2, -1, 0, 1, 2, 3, 4))+
+  theme_minimal()+
+  xlab("Autoritær prædisposition")+
+  ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Med kontrol variabler")
+```
+
+```{r, fig.width=8, fig.align='center', fig.cap='Marginal effekt af trussel  på intolerance over homoseksuelle, når autoritær prædisposition varierer', echo=FALSE}
+plot_model_2 <- ggarrange(plot_model_2_no_control, plot_model_2_control + rremove("y.title"))
+plot_model_2
+```
+
+find sample mean mnrgtjb \~ PVQ\*n_de_mu_im_3\_pop + rlgdgr + income + educ.ba + female + age + livecntr
+
+```{r}
+model_2_df_control <- samlet_ess%>%
+  dplyr::select(c("PVQ", "n_de_mu_im_3_pop", "mnrgtjb", "rlgdgr", "income", "educ.ba", "female", "age", "livecntr_f"))
+
+model_2_df_control<-as.data.frame( model_2_df_control[complete.cases(model_2_df_control),])
+```
+
+```{r}
+summary(model_2_df_control)
+```
+
+```{r, fig.width=8, fig.align='center'}
+model_2_control_man <- model_2_df_control%>%
+  filter(female == 0)
+
+model_2_control_woman <- model_2_df_control%>%
+  filter(female == 1)
+
+
+model_2_control_man <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + rlgdgr + income + educ.ba + age + livecntr_f, data = model_2_control_man)
+model_2_control_woman <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + rlgdgr + income + educ.ba + age + livecntr_f, data = model_2_control_woman)
+
+
+plot_model_2_control_man <- interplot(m = model_2_control_man, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = TRUE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-3, -2, -1, 0, 1, 2, 3, 4))+
+  theme_minimal()+
+  xlab("Autoritær prædisposition")+
+  ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Mænd")
+
+plot_model_2_control_woman <- interplot(m = model_2_control_woman, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = TRUE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-3, -2, -1, 0, 1, 2, 3, 4))+
+  theme_minimal()+
+  xlab("Autoritær prædisposition")+
+  ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Kvinder")
+
+plot_model_2_gender <- ggarrange(plot_model_2_control_man, plot_model_2_control_woman + rremove("y.title"))
+plot_model_2_gender
+```
+
+```{r}
+model_2_control_ba_0 <- model_2_df_control%>%
+  filter(educ.ba == 0)
+
+model_2_control_ba_1 <- model_2_df_control%>%
+  filter(educ.ba == 1)
+
+
+model_2_control_ba_0 <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + rlgdgr + income + age + livecntr_f + female, data = model_2_control_ba_0)
+model_2_control_ba_1 <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + rlgdgr + income + age + livecntr_f + female, data = model_2_control_ba_1)
+```
+
+```{r}
+model_2_control_ba_0 <- interplot(m = model_2_control_ba_0, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = TRUE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-3, -2, -1, 0, 1, 2, 3, 4))+
+  theme_minimal()+
+  xlab("Autoritær prædisposition")+
+  ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Uden Ba")
+
+model_2_control_ba_1 <- interplot(m = model_2_control_ba_1, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = TRUE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-3, -2, -1, 0, 1, 2, 3, 4))+
+  theme_minimal()+
+  xlab("Autoritær prædisposition")+
+  ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Med Ba")
+
+
+plot_model_2_ba <- ggarrange(model_2_control_ba_0, model_2_control_ba_1 + rremove("y.title"))
+plot_model_2_ba
+```
+
+```{r}
+model_2_control_rlgdgr <- model_2_df_control%>%
+  mutate(rlgdgr_fct = cut(rlgdgr, c(0,3,6,10), labels=c("lidt", "mellem", "meget")))
+
+model_2_control_r_lidt <- model_2_control_rlgdgr %>%
+  filter(rlgdgr_fct == "lidt")
+
+model_2_control_r_mellem <- model_2_control_rlgdgr %>%
+  filter(rlgdgr_fct == "mellem")
+
+model_2_control_r_meget <- model_2_control_rlgdgr %>%
+  filter(rlgdgr_fct == "meget")
+
+model_2_control_r_lidt <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + income + age + livecntr_f + female + educ.ba, data = model_2_control_r_lidt)
+
+model_2_control_r_mellem <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + income + age + livecntr_f + female + educ.ba, data = model_2_control_r_mellem)
+
+model_2_control_r_meget <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + income + age + livecntr_f + female  + educ.ba, data = model_2_control_r_meget)
+
+model_2_control_r_lidt <- 
+  interplot(m = model_2_control_r_lidt, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = FALSE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8), limits = c(-5.5,8.5))+
+  scale_x_continuous(limits = c(0,10))+
+  theme_minimal()+
+  #xlab("Autoritær prædisposition")+
+  #ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Lidt religiøs")
+
+model_2_control_r_mellem <- 
+  interplot(m = model_2_control_r_mellem, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = FALSE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8), limits = c(-5.5,8.5))+
+    scale_x_continuous(limits = c(0,10))+
+    theme_minimal()+
+  #xlab("Autoritær prædisposition")+
+  #ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Mellem religiøs")
+
+model_2_control_r_meget <- 
+  interplot(m = model_2_control_r_meget, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = FALSE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8), limits = c(-5.5,8.5))+
+    scale_x_continuous(limits = c(0,10))+
+  theme_minimal()+
+  #xlab("Autoritær prædisposition")+
+  #ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Meget religiøs")
+
+plot_model_2_control_r <- ggarrange(model_2_control_r_lidt, model_2_control_r_mellem, model_2_control_r_meget, nrow = 1)
+
+
+plot_model_2_control_r <- annotate_figure(plot_model_2_control_r,
+                top = text_grob("Marginal effekt af trussel på intolerance, givet autoritære prædispositioner \nVed forskelle niveauer af religøsitet", size = 12),
+                left = text_grob("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)",  rot = 90, size = 10),
+                bottom = text_grob("Autoritære prædispositioner", size = 10))
+
+plot_model_2_control_r
+rm(model_2_control_r_lidt, model_2_control_r_mellem, model_2_control_r_meget, model_2_control_rlgdgr)
+
+```
+
+```{r}
+model_2_control_live_0 <- model_2_df_control%>%
+  filter(livecntr_f == "Født i landet")
+
+model_2_control_live_1 <- model_2_df_control%>%
+  filter(livecntr_f == "Mere end 20 år")
+
+model_2_control_live_2 <- model_2_df_control%>%
+  filter(livecntr_f == "Mellem 11 og 20 år")
+
+model_2_control_live_3 <- model_2_df_control%>%
+  filter(livecntr_f == "Mellem 6 og 10 år")
+
+model_2_control_live_4 <- model_2_df_control%>%
+  filter(livecntr_f == "Mellem 0 og 5 år")
+
+
+model_2_control_live_0 <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + income + age + rlgdgr + female + educ.ba, data = model_2_control_live_0)
+
+model_2_control_live_1 <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + income + age + rlgdgr + female + educ.ba, data = model_2_control_live_1)
+
+model_2_control_live_2 <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + income + age + rlgdgr + female + educ.ba, data = model_2_control_live_2)
+
+model_2_control_live_3 <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + income + age + rlgdgr + female + educ.ba, data = model_2_control_live_3)
+
+model_2_control_live_4 <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + income + age + rlgdgr + female + educ.ba, data = model_2_control_live_4)
+
+
+model_2_control_live_0 <- 
+  interplot(m = model_2_control_live_0, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = FALSE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7), limits = c(-6,7.5))+
+  scale_x_continuous(limits = c(0,10))+
+  theme_minimal()+
+  #xlab("Autoritær prædisposition")+
+  #ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Født i landet")
+  
+model_2_control_live_1 <- 
+  interplot(m = model_2_control_live_1, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = FALSE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7), limits = c(-6,7.5))+
+  scale_x_continuous(limits = c(0,10))+
+  theme_minimal()+
+  #xlab("Autoritær prædisposition")+
+  #ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Mere end 20 år")
+  
+model_2_control_live_2 <- 
+  interplot(m = model_2_control_live_2, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = FALSE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7), limits = c(-6,7.5))+
+  scale_x_continuous(limits = c(0,10))+
+  theme_minimal()+
+  #xlab("Autoritær prædisposition")+
+  #ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Mellem 11 og 20 år")
+  
+model_2_control_live_3 <- 
+  interplot(m = model_2_control_live_3, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = FALSE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7), limits = c(-6,7.5))+
+  scale_x_continuous(limits = c(0,10))+
+  theme_minimal()+
+  #xlab("Autoritær prædisposition")+
+  #ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Mellem 6 og 10 år")
+
+model_2_control_live_4 <- 
+  interplot(m = model_2_control_live_4, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = FALSE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7), limits = c(-6,7.5))+
+  scale_x_continuous(limits = c(0,10))+
+  theme_minimal()+
+  #xlab("Autoritær prædisposition")+
+  #ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Mellem 0 og 5 år")
+
+plot_model_2_control_live <- ggarrange(model_2_control_live_4, model_2_control_live_3, model_2_control_live_2, model_2_control_live_1, model_2_control_live_0, nrow = 2, ncol = 3)
+
+
+plot_model_2_control_live <- annotate_figure(plot_model_2_control_live,
+                top = text_grob("Marginal effekt af trussel på intolerance, givet autoritære prædispositioner \ni forhold til hvor længe været i landet", size = 14),
+                left = text_grob("Marginal effekt af antal døde de forgående 3 år (pr. 1. mio. indbygger)",  rot = 90, size = 12),
+                bottom = text_grob("Autoritære prædispositioner", size = 12))
+
+plot_model_2_control_live
+rm(model_2_control_live_4, model_2_control_live_3, model_2_control_live_2, model_2_control_live_1, model_2_control_live_0)
+```
+
+```{r}
+model_2_control_ba_0 <- model_2_df_control%>%
+  filter(educ.ba == 0)
+model_2_control_ba_1 <- model_2_df_control%>%
+  filter(educ.ba == 1)
+
+
+model_2_control_ba_0 <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + rlgdgr + income + age + livecntr_f + female, data = model_2_control_ba_0)
+model_2_control_ba_1 <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + rlgdgr + income + age + livecntr_f + female, data = model_2_control_ba_1)
+
+
+model_2_control_ba_0 <- interplot(m = model_2_control_ba_0, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = TRUE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-3, -2, -1, 0, 1, 2, 3, 4))+
+  theme_minimal()+
+  xlab("Autoritær prædisposition")+
+  ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Uden Ba")
+
+model_2_control_ba_1 <- interplot(m = model_2_control_ba_1, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = TRUE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-3, -2, -1, 0, 1, 2, 3, 4))+
+  theme_minimal()+
+  xlab("Autoritær prædisposition")+
+  ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Med Ba")
+
+
+plot_model_2_ba <- ggarrange(model_2_control_ba_0, model_2_control_ba_1 + rremove("y.title"))
+plot_model_2_ba
+```
+
+```{r}
+model_2_control_man_ba_0 <- model_2_df_control%>%
+  filter(female == 0, educ.ba == 0)
+
+model_2_control_woman_ba_0 <- model_2_df_control%>%
+  filter(female == 1, educ.ba == 0)
+
+model_2_control_man_ba_1 <- model_2_df_control%>%
+  filter(female == 0, educ.ba == 1)
+
+model_2_control_woman_ba_1 <- model_2_df_control%>%
+  filter(female == 1, educ.ba == 1)
+
+model_2_control_man_ba_0 <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + rlgdgr + income + age + livecntr_f, data = model_2_control_man_ba_0)
+model_2_control_woman_ba_0 <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + rlgdgr + income + age + livecntr_f, data = model_2_control_woman_ba_0)
+
+model_2_control_man_ba_1 <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + rlgdgr + income + age + livecntr_f, data = model_2_control_man_ba_1)
+model_2_control_woman_ba_1 <- lm(mnrgtjb ~ PVQ*n_de_mu_im_3_pop + rlgdgr + income + age + livecntr_f, data = model_2_control_woman_ba_1)
+
+model_2_control_man_ba_0 <- interplot(m = model_2_control_man_ba_0, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = TRUE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-3, -2, -1, 0, 1, 2, 3, 4))+
+  theme_minimal()+
+  xlab("Autoritær prædisposition")+
+  ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Mænd uden Ba")
+
+model_2_control_woman_ba_0 <- interplot(m = model_2_control_woman_ba_0, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = TRUE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-3, -2, -1, 0, 1, 2, 3, 4))+
+  theme_minimal()+
+  xlab("Autoritær prædisposition")+
+  ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Kvinder uden Ba")
+
+model_2_control_man_ba_1 <- interplot(m = model_2_control_man_ba_1, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = TRUE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-3, -2, -1, 0, 1, 2, 3, 4))+
+  theme_minimal()+
+  xlab("Autoritær prædisposition")+
+  ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Mænd med Ba")
+
+model_2_control_woman_ba_1 <- interplot(m = model_2_control_woman_ba_1, var1 = "n_de_mu_im_3_pop", var2 = "PVQ", hist = TRUE) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  scale_y_continuous(breaks=c(-3, -2, -1, 0, 1, 2, 3, 4))+
+  theme_minimal()+
+  xlab("Autoritær prædisposition")+
+  ylab("Marginal effekt af antal døde de forgående 3 år \n(pr. 1. mio. indbygger)")+
+  labs(subtitle = "Kvinder med Ba")
+
+plot_model_2_gender_ba <- ggarrange(model_2_control_man_ba_0  + rremove("y.title"), model_2_control_woman_ba_0 + rremove("y.title"), model_2_control_man_ba_1 + rremove("y.title"), model_2_control_woman_ba_1 + rremove("y.title"), nrow = 2, ncol = 2)
+plot_model_2_gender_ba
+```
+
+```{r}
+
+```

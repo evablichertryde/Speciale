@@ -1,0 +1,997 @@
+---
+title: "3 autoritarisme skala"
+output: html_notebook
+
+editor_options: 
+  markdown: 
+    wrap: 72
+header-includes:
+    - \usepackage{setspace}\doublespacing
+    - \usepackage{booktabs} 
+    - \usepackage{tabularx}
+    - \usepackage{tidy}
+---
+
+```{r hente-pakker, message=FALSE, include=FALSE, echo=FALSE}
+library(tidyverse) # Kan rense det nye data
+library(scales)
+library(psych)
+library(viridis)
+library(ggplot2)
+library(extrafont)
+loadfonts()
+```
+
+```{r}
+ess <- read.csv("../data/ess_treated.csv")
+```
+
+
+```{r}
+auto <- ess %>%
+  select(id, cntry, respondent, dikotom, int.year, essround, c("ipcrtiv":"impfun"))%>%
+  rename(v1 = ipcrtiv, v2 =imprich, v3 = ipeqopt, v4 = ipshabt, v5 = impsafe, v6 = impdiff, v7 = ipfrule, v8 = ipudrst, v9 = ipmodst, v10 = ipgdtim, v11 = impfree, v12 = iphlppl, v13 = ipsuces, v14 = ipstrgv, v15 = ipadvnt, v16 = ipbhprp, v17 = iprspot, v18 = iplylfr, v19 = impenv, v20 = imptrad, v21 = impfun)%>%
+  select(id, cntry, respondent, dikotom, essround, int.year, v5, v14, v7, v16, v9, v20, v1, v11, v6, v15)
+```
+
+```{r funktion til at ændre auto værdi retning}
+Flip <- function(x) 6 - x
+auto <- mutate_at(auto,.vars = -c(1, 2, 3, 4, 5, 6), Flip )
+```
+
+```{r}
+auto_na <- auto %>%
+  select(id, v5, v14, v7, v16, v9, v20, v1, v11, v6, v15)
+
+auto_na <- auto_na%>%
+  mutate(Na_no = rowSums(is.na(auto_na)))%>%
+  select(id, Na_no)
+
+auto <- full_join(auto, auto_na, by = "id")
+rm(auto_na)
+
+```
+
+
+```{r}
+auto <- auto %>%
+ filter(Na_no == 0)%>% 
+  rowwise()%>%
+  mutate(security = sum(c(v5, v14)), 
+         conformity = sum(c(v7, v16)),
+         tradition = sum(c(v9, v20)),
+         selfdirection = sum(c(v1, v11)),
+         stimulation = sum(c(v6, v15)))%>%
+  mutate(conservation = sum(c(conformity, tradition, security)), opneness = sum(c(selfdirection, stimulation)))
+```
+
+```{r}
+conservation.item <- auto%>%
+  select(conformity, tradition, security)
+
+security.item <- auto%>%
+  select(v5, v14)
+
+conformity.item <- auto%>%
+  select(v7, v16)
+
+tradition.item <- auto%>%
+  select(v9, v20)
+
+opneness.item <- auto%>%
+  select(selfdirection, stimulation)
+```
+
+
+```{r}
+auto$conservation_10 <- scales::rescale(auto$conservation, to = c(0,10))
+auto$opneness_10 <- scales::rescale(auto$opneness, to = c(0,10))
+
+auto <- auto%>%
+  rowwise()%>%
+  mutate(PVQ = conservation-opneness, PVQ_10 = conservation_10-opneness_10)%>%
+  filter(cntry %in% c("NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT", "FI", "GR", "CH", "IE", "BE"))
+auto$PVQ <- scales::rescale(auto$PVQ, to = c(0,10))
+auto$PVQ_10 <- scales::rescale(auto$PVQ_10, to = c(0,10))
+
+auto$auto_cat[auto$PVQ >= 7.5] <- "very auto"
+auto$auto_cat[auto$PVQ <= 2.5] <- "very lib"
+auto$auto_cat[auto$PVQ > 2.5 & auto$PVQ < 5] <- "lib"
+auto$auto_cat[auto$PVQ >= 5 & auto$PVQ < 7.5] <- "auto"
+
+auto$auto_cat_10[auto$PVQ_10 >= 7.5] <- "very auto"
+auto$auto_cat_10[auto$PVQ_10 <= 2.5] <- "very lib"
+auto$auto_cat_10[auto$PVQ_10 > 2.5 & auto$PVQ_10 < 5] <- "lib"
+auto$auto_cat_10[auto$PVQ_10 >= 5 & auto$PVQ_10 < 7.5] <- "auto"
+```
+
+```{r, eval=FALSE}
+auto <- auto %>%
+  mutate(label = case_when(
+    cntry == "AT" ~ "Østrig",
+    cntry == "NO" ~ "Norge",
+    cntry == "SE" ~ "Sverige",
+    cntry == "DK" ~ "Danmark",
+    cntry == "DE" ~ "Tyskland",
+    cntry == "IT" ~ "Italien",
+    cntry == "ES" ~ "Spanien",
+    cntry == "NL" ~ "Nederland",
+    cntry == "FR" ~ "Frankrig",
+    cntry == "PT" ~ "Portugal",
+    cntry == "FI" ~ "Finland",
+    cntry == "GR" ~ "Grækenland",
+    cntry == "CH" ~ "Schweiz",
+    cntry == "IE" ~ "Irland",
+    cntry == "BE" ~ "Belgium",
+    cntry == "GB" ~ "United Kingdom",
+    cntry == "GR" ~ "Greece"))%>%
+  filter(!is.na(label))
+```
+
+
+```{r}
+auto_scale <- auto %>%
+  select(-c(PVQ, auto_cat))%>%
+  select(-c("v5":"opneness_10"))%>%
+  rename(PVQ = PVQ_10, auto_cat = auto_cat_10)
+  
+
+auto_indeks<- auto
+```
+
+
+```{r}
+write_csv(auto_scale, "../data/auto_scale.csv")
+write_csv(auto_indeks, "../data/auto_indeks.csv")
+```
+
+
+```{r}
+auto_scale_mean <- auto_scale%>%
+  group_by(int.year)%>%
+  summarise(PVQ = mean(PVQ))
+
+png(file="../figures/analyse 1/auto over tid.png", width = 8, height = 5, units = "in", res=500)
+
+p <- ggplot(auto_scale_mean, aes(int.year, PVQ))+
+  geom_line()+
+  #geom_smooth(se = FALSE, show.legend = TRUE)+
+  theme_minimal()+
+  ylim(4, 6)+
+  geom_hline(yintercept = 5, size = 0.5, alpha = 0.5, col = 'red')+
+  labs(title = "Gennemsnitlig autoritær prædisposition over årene", x = "Interview år", y = "Gennemsnit af autoritære prædispostioner")+
+  scale_x_continuous(breaks = c(2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018, 2020))+
+  theme(legend.position = "bottom")+
+    scale_colour_manual(name="legend", values=c("red"))
+print(p)
+dev.off()
+print(p)
+
+```
+
+
+
+
+```{r fig.width=8, fig.height=6}
+count_total <- auto_scale%>%
+  group_by(int.year)%>%
+  count()%>%
+  rename(total = n)
+
+
+count_prop <- auto_scale%>%
+  group_by(int.year, auto_cat)%>%
+  count()%>%
+  rename(prop = n)
+
+count <- right_join(count_prop, count_total)
+count <- count%>%
+  mutate(andel = prop/total)%>%
+  mutate(auto_cat = as.factor(auto_cat))%>%
+  mutate(int.year_f = as.factor(int.year))
+count$auto_cat <- factor(count$auto_cat, levels = c("very auto", "auto", "lib", "very lib"))
+levels(count$auto_cat)
+
+rm(count_total, count_prop)
+```
+
+
+```{r fig.width=8, fig.height=6}
+png(file="../figures/analyse 1/andel auto kategori alle ikke stackt.png", width = 8, height = 6, units = "in", res=500)
+p <- ggplot(count, aes(int.year, andel, color = auto_cat))+
+  geom_line(size = 1.3, alpha = 0.8)+
+  theme_minimal()+
+    ylim(0, 1)+
+  labs(title = "Fordeling på autoritær prædisposition over årene", x = "Interview år", y = "Andel")+
+  scale_x_continuous(breaks = c(2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018, 2020))+
+  scale_color_discrete(name = "Autoritære prædisposition", labels = c("Meget autoritær", "Autoritær", "Non_autoritær", "Meget non-autoritær"))+
+  theme(legend.position = "bottom")+
+        theme(strip.placement = "outside",
+        strip.background = element_blank(),
+        panel.spacing.y = unit(1, "lines"))+
+  theme(axis.text = element_text( size = 10 , margin=margin(0,0,30,0)),
+        axis.text.x = element_text(family = "sans", size = 10 ),
+        axis.title = element_text( size = 12, margin=margin(0,0,30,0), hjust = 0.5),
+           legend.position="bottom",
+           strip.text = element_text(size = 12))
+
+print(p)
+dev.off()
+print(p)
+
+```
+
+
+```{r fig.width=8, fig.height=6}
+#png(file="../figures/analyse 1/andel auto kategori alle.png", width = 8, height = 6, units = "in", res=500)
+p <- ggplot(count, aes(y=andel, x=int.year, fill=auto_cat)) + 
+  geom_area( stat="identity") +
+  theme_classic() +
+  xlab("Interview år") +
+  ylab("Andel") +
+  labs(title = "Fordeling på autoritær prædisposition over årene")+
+  #guides(fill=guide_legend(title="Fordeling på autoritarisme"))+
+    scale_x_continuous(breaks = c(2002, 2005, 2010, 2015, 2020), expand = c(0,0))+
+    scale_fill_viridis(discrete=TRUE,begin=0.15, end=0.94, name = "Autoritære prædisposition", labels = c("Meget autoritær", "Autoritær", "Non-autoritær", "Meget non-autoritær"))+
+    theme(legend.position = "bottom")+
+        theme(strip.placement = "outside",
+        strip.background = element_blank(),
+        panel.spacing.y = unit(1, "lines"))+
+  theme(axis.text = element_text( size = 10 , margin=margin(0,0,30,0)),
+        axis.text.x = element_text(family = "CM Roman", size = 10 ),
+        axis.title = element_text( size = 12, margin=margin(0,0,30,0), hjust = 0.5),
+           legend.position="bottom")+
+    #scale_x_continuous(limits = c(2002,2020), expand = c(0,0))+
+  scale_y_continuous(limits = c(0,1), expand = c(0,0))+
+        theme(plot.title = element_text(hjust = 0.5, size = 12, margin=margin(0,0,30,0), family = "CM Roman"))+
+  theme(legend.text=element_text(size=10, family = "CM Roman"), legend.title = element_text(size = 10),
+        axis.text = element_text(size = 4, family = "CM Roman"), text = element_text(family = "CM Roman"),
+        axis.title = element_text(size = 10, family = "CM Roman"))+
+  #theme(plot.subtitle = element_text(hjust = 0.5, size = 10, margin=margin(0,0,30,0), family = "CM Roman"))+
+  theme(legend.text=element_text(size=10, family = "CM Roman"), text = element_text(family = "CM Roman"))
+
+print(p)
+#dev.off()
+#print(p)
+
+#rm(count)
+```
+
+
+
+
+```{r fig.width=8, fig.height=6}
+png(file="../figures/analyse 1/andel auto kategori i forskellige lande.png", width = 8, height = 6, units = "in", res=500)
+
+cntry_n <- auto_scale %>%
+  group_by(cntry) %>%
+  count()
+cntry_n <- rename(cntry_n, cntry_n = n)
+
+cntry_ac_n <- auto_scale %>%
+  group_by(cntry, auto_cat) %>%
+  count()
+cntry_ac_n <- rename(cntry_ac_n, cntry_ac_n = n)
+
+cntry <- left_join(cntry_ac_n, cntry_n)
+cntry <- cntry%>%
+  mutate(andel = cntry_ac_n/cntry_n)%>%
+  mutate(auto_cat = as.factor(auto_cat))
+cntry$auto_cat <- factor(cntry$auto_cat, levels = c("very auto", "auto", "lib", "very lib"))
+levels(cntry$auto_cat)
+
+rm(cntry_n,cntry_ac_n)
+
+p <- ggplot(cntry, aes(x = cntry, y = andel, fill = auto_cat))+
+  geom_bar(stat="identity")+
+  theme_classic()+
+  xlab("") +
+  ylab("Andel") +
+  labs(title = "Fordeling på autoritære prædisposition kategorier på tværs af lande")+
+  scale_fill_viridis(discrete=TRUE, option = "A",begin=0.15, end=0.94, name = "Autoritære prædisposition", labels = c("Meget autoritær", "Autoritær", "Non-autoritær", "Meget non-autoritær"))+
+  theme(legend.position = "bottom")+
+  theme(axis.text = element_text( size = 10 , margin=margin(0,0,30,0)),
+        axis.text.x = element_text(family = "sans", size = 10 ),
+        axis.title = element_text( size = 12, margin=margin(0,0,30,0), hjust = 0.5),
+        strip.text = element_text(size = 12))
+
+rm(cntry)
+print(p)
+dev.off()
+print(p)
+```
+
+```{r fig.width=8, fig.height=11}
+png(file="../figures/analyse 1/udvikling i auto kategori over ess runder i lande.png", width = 8, height = 11, units = "in", res=500)
+
+cntry_n <- auto_scale %>%
+  group_by(label, essround) %>%
+  count()
+cntry_n <- rename(cntry_n, cntry_n = n)
+
+cntry_ac_n <- auto_scale %>%
+  group_by(label, auto_cat, essround) %>%
+  count()
+cntry_ac_n <- rename(cntry_ac_n, cntry_ac_n = n)
+
+cntry <- left_join(cntry_ac_n, cntry_n)
+cntry <- cntry%>%
+  mutate(andel = cntry_ac_n/cntry_n)%>%
+  filter(!is.na(essround))%>%
+    mutate(auto_cat = as.factor(auto_cat))
+cntry$auto_cat <- factor(cntry$auto_cat, levels = c("very auto", "auto", "lib", "very lib"))
+levels(cntry$auto_cat)
+
+
+rm(cntry_n,cntry_ac_n)
+
+p <- ggplot(cntry, aes(x = essround, y = andel, fill = auto_cat))+
+  geom_bar(stat="identity")+
+  theme_classic()+
+  xlab("Ess runde") +
+  ylab("Andel") +
+  labs(title = "Fordeling på autoritære prædisposition kategorier \npå tværs af lande ved ESS runder", caption = "Blank område angiver at et land ikke deltog i den givet Ess runde")+
+  scale_fill_viridis(discrete=TRUE, option = "A",begin=0.15, end=0.94, name = "Autoritære prædisposition", labels = c("Meget autoritær", "Autoritær", "Middel", "Non-autoritær", "Meget non-autoritær"))+
+  theme(legend.position = "bottom")+
+  facet_wrap(~label, nrow=4, ncol=4, strip.position = "top") +
+  scale_x_discrete(limits=1:9)+ 
+  ylim(0,1)+
+    theme(strip.placement = "outside",
+        strip.background = element_blank(),
+        panel.spacing.y = unit(1, "lines"))+
+  theme(axis.text = element_text( size = 10 , margin=margin(0,0,30,0)),
+        axis.text.x = element_text(family = "sans", size = 10 ),
+        axis.title = element_text( size = 12, margin=margin(0,0,30,0), hjust = 0.5),
+           legend.position="bottom",
+           strip.text = element_text(size = 12))
+rm(cntry)
+print(p)
+dev.off()
+print(p)
+
+```
+
+```{r, include=FALSE, echo=FALSE, eval=FALSE}
+essround <- unique(auto_scale$essround)
+label <- unique(auto_scale$label)
+df_1 <- data_frame(essround)
+df_2 <- data_frame(label)
+df <- nest_join(df_1, df_2, by = character())
+
+df <- unnest(df)
+str(df)
+df <- df %>%
+  mutate(essround = as.numeric(essround))
+str(df)
+
+```
+
+
+
+```{r fig.width=8, fig.height=9}
+png(file="../figures/analyse 1/udvikling i auto over tid i lande.png", width = 8, height = 11, units = "in", res=500)
+
+
+cntry_mean <- auto_scale%>%
+  group_by(int.year, label)%>%
+  summarise(PVQ = mean(PVQ))
+
+cntry_mean$drop[cntry_mean$label == "Norge" & cntry_mean$int.year == 2017] <- "drop"
+
+cntry_mean <- cntry_mean%>%
+  filter(is.na(drop))
+
+#cntry_mean <- left_join(df, cntry_mean)
+
+p <- ggplot(cntry_mean, aes(int.year, PVQ))+
+  #geom_point()+
+  geom_line(size = 1, alpha = 0.7)+
+  theme_minimal()+
+  #ylim(0, 10)+
+  labs(title = "Gennemsnit af graden af autoritær prædisposition over årene", caption = "Den røde linje angiver middel autoritarisme værdi, hvor man ikke er mere autoritær end non-autoritær. \n Autoritære prædisposition kan være mellem 0-10",
+       x = "Interview år", y = "Gennemsnit af autoritære prædispostioner")+
+  facet_wrap(~label, nrow=4, ncol=4, scales = "free_x") +
+  xlim(2002, 2020)+
+  ylim(4,6)+
+      theme(strip.placement = "outside",
+        strip.background = element_blank(),
+        panel.spacing.y = unit(0.5, "lines"))+
+  geom_hline(yintercept = 5, size = 0.5, alpha = 0.5, col = 'red')+
+  theme(axis.text = element_text( size = 10 , margin=margin(0,0,30,0)),
+        axis.text.x = element_text(family = "sans", size = 10 ),
+        axis.title = element_text( size = 12, margin=margin(0,0,30,0), hjust = 0.5),
+           legend.position="none",
+           strip.text = element_text(size = 12))
+print(p)
+dev.off()
+print(p)
+
+```
+
+
+
+
+
+
+
+
+
+```{r}
+auto_long <- auto %>%
+  gather(key = "conservation_scale", value = "conservation", conservation, conservation_10)%>%
+  gather(key = "opneness_scale", value = "opneness", opneness, opneness_10)%>%
+    gather(key = "auto_scale", value = "auto", PVQ, PVQ_10)
+```
+
+```{r}
+auto_long$scale[auto_long$conservation_scale=='conservation' & auto_long$opneness_scale=='opneness' & auto_long$auto_scale=='PVQ'] <- "no scale"
+
+auto_long$scale[auto_long$conservation_scale=='conservation_10' & auto_long$opneness_scale=='opneness_10' & auto_long$auto_scale=='PVQ_10' ] <- "scale"
+```
+
+```{r}
+auto_long <- auto_long[ which(auto_long$conservation_scale=='conservation' & auto_long$opneness_scale=='opneness' & auto_long$auto_scale=='PVQ' | auto_long$conservation_scale=='conservation_10' & auto_long$opneness_scale=='opneness_10' & auto_long$auto_scale=='PVQ_10' 
+), ]
+```
+
+```{r}
+auto_long <- auto_long %>%
+  select(-c(opneness_scale, conservation_scale, auto_scale))
+```
+
+gennemsnitlig auto pr. år
+
+
+
+**Skala inddel af autoritarisme niveau**
+
+```{r}
+auto_long$auto_cat[auto_long$auto >= 7.5] <- "very auto"
+auto_long$auto_cat[auto_long$auto <= 2.5] <- "very lib"
+auto_long$auto_cat[auto_long$auto > 2.5 & auto_long$auto < 5] <- "lib"
+auto_long$auto_cat[auto_long$auto >= 5 & auto_long$auto < 7.5] <- "auto"
+
+```
+
+```{r}
+table(auto_long$auto_cat)
+```
+
+
+**Andel med forskellige auto skalaer**
+Del auto score op i 4 grupper, 
+  0-2.5:meget lib
+  2.5-5:lib
+  5-7.5:auto
+  7.5-10: very auto
+  
+finder andel har forskellige auto score for
+alle obs
+pr år
+pr land
+pr år pr land
+pr. majoritet og minoritet gruppe
+pr. majoritet og minoritet gruppe. pr år
+pr. majoritet og minoritet gruppe pr. land
+pr. majoritet og minoritet gruppe pr. år pr. land
+
+
+
+```{r}
+N <- count(auto_long)/2
+auto_long$obs <- N$n
+rm(N)
+```
+
+
+
+```{r}
+scale <- auto_long %>%
+  filter(scale == "scale")%>%
+  select(-c(scale, v5:opneness)) 
+
+no_scale <- auto_long %>%
+  filter(scale == "no scale")%>%
+  select(-c(scale, v5:opneness)) 
+```
+
+
+
+
+
+
+```{r}
+scale_cat <- scale %>%
+  group_by(int.year)%>%
+  summarize(n_year = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(int.year)%>%
+  summarize(n_year = n())
+
+no_scale <- left_join(no_scale, no_scale_cat, by = "int.year")
+scale <- left_join(scale, scale_cat, by = "int.year")
+rm(no_scale_cat, scale_cat)
+
+scale_cat <- scale %>%
+  group_by(cntry)%>%
+  summarize(n_cntry = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(cntry)%>%
+  summarize(n_cntry = n())
+
+no_scale <- left_join(no_scale, no_scale_cat, by = "cntry")
+scale <- left_join(scale, scale_cat, by = "cntry")
+rm(no_scale_cat, scale_cat)
+
+
+scale_cat <- scale %>%
+  group_by(cntry, int.year)%>%
+  summarize(n_cntry_year = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(cntry, int.year)%>%
+  summarize(n_cntry_year = n())
+
+no_scale <- left_join(no_scale, no_scale_cat, by = c("cntry", "int.year"))
+scale <- left_join(scale, scale_cat, by = c("cntry", "int.year"))
+rm(no_scale_cat, scale_cat)
+```
+
+
+```{r}
+scale_cat <- scale %>%
+  group_by(auto_cat)%>%
+  summarize(n_auto_cat = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(auto_cat)%>%
+  summarize(n_auto_cat = n())
+
+no_scale <- left_join(no_scale, no_scale_cat, by = "auto_cat")
+scale <- left_join(scale, scale_cat, by = "auto_cat")
+rm(no_scale_cat, scale_cat)
+
+
+scale_cat <- scale %>%
+  group_by(auto_cat, int.year)%>%
+  summarize(n_auto_cat_year  = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(auto_cat, int.year)%>%
+  summarize(n_auto_cat_year = n())
+
+no_scale <- left_join(no_scale, no_scale_cat, by = c("auto_cat", "int.year"))
+scale <- left_join(scale, scale_cat, by = c("auto_cat", "int.year"))
+rm(no_scale_cat, scale_cat)
+
+scale_cat <- scale %>%
+  group_by(auto_cat, int.year, cntry)%>%
+  summarize(n_auto_cat_year_cntry  = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(auto_cat, int.year, cntry)%>%
+  summarize(n_auto_cat_year_cntry = n())
+
+no_scale <- left_join(no_scale, no_scale_cat,  by = c("auto_cat", "int.year", "cntry"))
+scale <- left_join(scale, scale_cat, by = c("auto_cat", "int.year", "cntry"))
+rm(no_scale_cat, scale_cat)
+
+scale_cat <- scale %>%
+  group_by(auto_cat, cntry)%>%
+  summarize(n_auto_cat_cntry  = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(auto_cat, cntry)%>%
+  summarize(n_auto_cat_cntry = n())
+
+no_scale <- left_join(no_scale, no_scale_cat,  by = c("auto_cat", "cntry"))
+scale <- left_join(scale, scale_cat, by = c("auto_cat", "cntry"))
+rm(no_scale_cat, scale_cat)
+```
+
+
+```{r}
+scale_cat <- scale %>%
+  group_by(dikotom)%>%
+  summarize(n_dikotom  = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(dikotom)%>%
+  summarize(n_dikotom  = n())
+
+no_scale <- left_join(no_scale, no_scale_cat,  by = c("dikotom"))
+scale <- left_join(scale, scale_cat, by = c("dikotom"))
+rm(no_scale_cat, scale_cat)
+
+scale_cat <- scale %>%
+  group_by(dikotom, int.year)%>%
+  summarize(n_dikotom_year  = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(dikotom, int.year)%>%
+  summarize(n_dikotom_year  = n())
+
+no_scale <- left_join(no_scale, no_scale_cat,  by = c("dikotom", "int.year"))
+scale <- left_join(scale, scale_cat, by = c("dikotom", "int.year"))
+rm(no_scale_cat, scale_cat)
+
+scale_cat <- scale %>%
+  group_by(dikotom, cntry)%>%
+  summarize(n_dikotom_cntry  = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(dikotom, cntry)%>%
+  summarize(n_dikotom_cntry  = n())
+
+no_scale <- left_join(no_scale, no_scale_cat,  by = c("dikotom", "cntry"))
+scale <- left_join(scale, scale_cat, by = c("dikotom", "cntry"))
+rm(no_scale_cat, scale_cat)
+
+
+scale_cat <- scale %>%
+  group_by(dikotom, cntry, int.year)%>%
+  summarize(n_dikotom_cntry_year  = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(dikotom, cntry, int.year)%>%
+  summarize(n_dikotom_cntry_year  = n())
+
+no_scale <- left_join(no_scale, no_scale_cat,  by = c("dikotom", "cntry", "int.year"))
+scale <- left_join(scale, scale_cat, by = c("dikotom", "cntry", "int.year"))
+rm(no_scale_cat, scale_cat)
+```
+
+
+```{r}
+scale_cat <- scale %>%
+  group_by(auto_cat, dikotom)%>%
+  summarize(n_auto_cat_dikotom  = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(auto_cat, dikotom)%>%
+  summarize(n_auto_cat_dikotom = n())
+
+no_scale <- left_join(no_scale, no_scale_cat,  by = c("auto_cat", "dikotom"))
+scale <- left_join(scale, scale_cat, by = c("auto_cat", "dikotom"))
+rm(no_scale_cat, scale_cat)
+
+scale_cat <- scale %>%
+  group_by(auto_cat, dikotom, int.year)%>%
+  summarize(n_auto_cat_dikotom_year  = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(auto_cat, dikotom, int.year)%>%
+  summarize(n_auto_cat_dikotom_year = n())
+
+no_scale <- left_join(no_scale, no_scale_cat,  by = c("auto_cat", "dikotom", "int.year"))
+scale <- left_join(scale, scale_cat, by = c("auto_cat", "dikotom", "int.year"))
+rm(no_scale_cat, scale_cat)
+
+
+scale_cat <- scale %>%
+  group_by(auto_cat, dikotom, cntry)%>%
+  summarize(n_auto_cat_dikotom_cntry  = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(auto_cat, dikotom, cntry)%>%
+  summarize(n_auto_cat_dikotom_cntry = n())
+
+no_scale <- left_join(no_scale, no_scale_cat,  by = c("auto_cat", "dikotom", "cntry"))
+scale <- left_join(scale, scale_cat, by = c("auto_cat", "dikotom", "cntry"))
+rm(no_scale_cat, scale_cat)
+
+
+scale_cat <- scale %>%
+  group_by(auto_cat, dikotom, cntry, int.year)%>%
+  summarize(n_auto_cat_dikotom_cntry_year  = n())
+
+no_scale_cat <- no_scale %>%
+  group_by(auto_cat, dikotom, cntry, int.year)%>%
+  summarize(n_auto_cat_dikotom_cntry_year  = n())
+
+no_scale <- left_join(no_scale, no_scale_cat,  by = c("auto_cat", "dikotom", "cntry", "int.year"))
+scale <- left_join(scale, scale_cat, by = c("auto_cat", "dikotom", "cntry", "int.year"))
+rm(no_scale_cat, scale_cat)
+
+```
+
+
+
+  alle obs
+  pr år
+  pr land
+  pr år pr land
+  pr. majoritet og minoritet gruppe
+  pr. majoritet og minoritet gruppe. pr år
+  pr. majoritet og minoritet gruppe pr. land
+pr. majoritet og minoritet gruppe pr. år pr. land
+```{r}
+scale <- scale %>%
+  mutate(auto_cat_pro = n_auto_cat/obs,
+         auto_cat_year_pro = n_auto_cat_year/n_year,
+         auto_cat_cntry_pro = n_auto_cat_cntry/n_cntry,
+         auto_cat_year_cntry_pro = n_auto_cat_year_cntry/n_cntry_year,
+         
+         
+         auto_cat_dikotom_pro = n_auto_cat_dikotom/n_dikotom,
+         auto_cat_dikotom_year_pro = n_auto_cat_dikotom_year/n_dikotom_year,
+         auto_cat_dikotom_cntry_pro = n_auto_cat_dikotom_cntry/n_dikotom_cntry,
+         auto_cat_dikotom_cntry_pro = n_auto_cat_dikotom_cntry_year/n_dikotom_cntry_year)
+         
+         
+no_scale <- no_scale %>%
+  mutate(auto_cat_pro = n_auto_cat/obs,
+         auto_cat_year_pro = n_auto_cat_year/n_year,
+         auto_cat_cntry_pro = n_auto_cat_cntry/n_cntry,
+         auto_cat_year_cntry_pro = n_auto_cat_year_cntry/n_cntry_year,
+         
+         
+         auto_cat_dikotom_pro = n_auto_cat_dikotom/n_dikotom,
+         auto_cat_dikotom_year_pro = n_auto_cat_dikotom_year/n_dikotom_year,
+         auto_cat_dikotom_cntry_pro = n_auto_cat_dikotom_cntry/n_dikotom_cntry,
+         auto_cat_dikotom_cntry_pro = n_auto_cat_dikotom_cntry_year/n_dikotom_cntry_year)
+```
+
+
+```{r}
+ggplot(auto_long, aes(auto))+
+  geom_density(aes(fill=factor(scale)), alpha=0.8) 
+```
+
+```{r}
+ggplot(auto_long, aes(auto))+
+  geom_density(aes(fill=factor(dikotom)), alpha=0.6) + 
+  facet_grid(rows = vars(scale))
+```
+
+```{r}
+ggplot(scale, aes(x=int.year, y= auto_cat_dikotom_year_pro))+
+  geom_line((aes(color=auto_cat)))+
+  facet_wrap(vars(dikotom))
+```
+
+```{r}
+scale_auto <- scale %>%
+  filter(auto_cat == "very auto")
+ggplot(scale_auto, aes(x=int.year, y= auto_cat_dikotom_year_pro))+
+  geom_line((aes(color=dikotom)))
+```
+
+
+
+
+
+
+```{r}
+scale_dot_maj_cntry <- auto_long %>%
+  filter(scale == "scale")%>%
+  filter(cntry %in% c("NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT", "FI", "GR", "CH", "IE", "BE"))%>%
+  group_by(cntry)%>%
+  mutate(cntry_n = n())%>%
+  group_by(cntry, dikotom)%>%
+  mutate(dikotom_n = n())%>%
+  ungroup()%>%
+  group_by(cntry, dikotom, auto_cat)%>%
+  mutate(auto_cat_n = n())%>%
+  filter(auto_cat == "very auto")%>%
+  select(cntry, cntry_n, dikotom, dikotom_n, auto_cat, auto_cat_n)%>%
+  mutate(prop_aut = (auto_cat_n/dikotom_n))%>%
+  filter(!is.na(prop_aut))
+
+scale_dot_maj_cntry <- unique(scale_dot_maj_cntry)
+```
+
+
+```{r}
+big_diff <- scale_dot_maj_cntry %>% 
+  select(-c(auto_cat_n, auto_cat, cntry_n, dikotom_n)) %>%
+        spread(dikotom, prop_aut)%>%
+group_by(cntry) %>%
+        mutate(Diff = muslim - majority) %>% 
+        arrange(desc(Diff))%>%
+  select(cntry, Diff)
+
+scale_dot_maj_cntry <- left_join(scale_dot_maj_cntry, big_diff)
+
+scale_dot_maj_cntry <- scale_dot_maj_cntry%>%
+    mutate(label = case_when(
+    cntry == "AT" ~ "Østrig",
+    cntry == "NO" ~ "Norge",
+    cntry == "SE" ~ "Sverige",
+    cntry == "DK" ~ "Danmark",
+    cntry == "DE" ~ "Tyskland",
+    cntry == "IT" ~ "Italien",
+    cntry == "ES" ~ "Spanien",
+    cntry == "NL" ~ "Nederland",
+    cntry == "FR" ~ "Frankrig",
+    cntry == "PT" ~ "Portugal",
+    cntry == "FI" ~ "Finland",
+    cntry == "GR" ~ "Grækenland",
+    cntry == "CH" ~ "Schweiz",
+    cntry == "IE" ~ "Irland",
+    cntry == "BE" ~ "Belgium",
+    cntry == "GB" ~ "United Kingdom"))%>%
+  filter(!is.na(Diff))
+
+rm(big_diff)
+```
+
+```{r}
+ggplot(scale_dot_maj_cntry, aes(prop_aut, fct_reorder(label, Diff))) +
+  geom_line(aes(group = label), alpha = 0.5) +
+  geom_point(aes(color = dikotom), size = 1.5, alpha = 1) +
+  scale_x_continuous(labels = scales::percent, expand = c(0, 0), limits = c(.00, .13))+
+  annotate("text", x = .075, y = "Schweiz", label = "Muslim mere autoritære", color = "#00BFC4", size = 3, hjust = -0.1, vjust = -.1) +
+  annotate("text", x = .075, y = "Frankrig", label = "Majoritets befolkning mere autoritære", color = "#F8766D", size = 3, hjust = -0.1, vjust = -.1) +
+  geom_segment(aes(x = .075, xend = .075 , y = "Schweiz", yend = "Danmark"), arrow = arrow(length = unit(0.2,"cm")), color = "#00BFC4") +
+  geom_segment(aes(x = .075, xend = .075 , y = "Frankrig", yend = "Irland"), arrow = arrow(length = unit(0.2,"cm")), color = "#F8766D")+
+  theme_minimal()+
+  ggtitle("Andel af gruppe med høj autotitære prædispositioner")+
+  theme(axis.title = element_blank(),
+        text = element_text(family = "serif"),
+              panel.grid.minor = element_blank(),
+              legend.position = "none",
+              axis.text.y = element_text(size = 8),
+              plot.title = element_text(size = 12, margin = margin(b = 10), hjust = 0),
+              plot.subtitle = element_text(size = 12, color = "darkslategrey", margin = margin(b = 25, l = -25)),
+              plot.caption = element_text(size = 8, margin = margin(t = 10), color = "grey70", hjust = 0))
+```
+
+http://uc-r.github.io/cleveland-dot-plots og med inspiration fra https://uc-r.github.io/lollipop
+
+
+
+
+```{r}
+table(auto_long$cntry, auto_long$dikotom)
+```
+
+
+```{r}
+ungroup()%>%
+  group_by(cntry, dikotom, auto_cat)%>%
+  summarize(auto_cat_n = n(auto_cat))%>%
+  filter(auto_cat == "very auto")
+
+#%>%
+ # select(auto_cat, dikotom, cntry, auto_cat_dikotom_cntry_pro)
+
+#scale_dot_maj_cntry <- unique(scale_dot_maj_cntry)
+```
+
+```{r}
+unique(scale_dot_maj_cntry$dikotom_n)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+auto_scale <- auto_long %>%
+  filter(scale == "scale")%>%
+  filter(cntry %in% c("NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT", "FI", "GR", "CH", "IE", "BE"))
+```
+
+```{r}
+ggplot(auto_scale, aes(auto))+
+  geom_density(aes(fill=factor(dikotom)), alpha=0.6) + 
+  facet_wrap(vars(cntry))
+```
+
+```{r}
+ggplot(auto_scale, aes(int.year, auto))+
+  geom_line()
+```
+
+
+
+```{r}
+n_1 <- function(df, x){
+  df_n <- df %>%
+    group_by({{x}})%>%
+    summarize(n = n())
+  name <- colnames(df_n)
+  varname <- paste(name[1], "_n", sep="")
+  names(df_n)[2] <- as.character(varname[1])
+  df_n$obs <- 362003
+  return(df_n)
+}
+
+n_2 <- function(df, x, y){
+  df_n <- df %>%
+    group_by({{x}}, {{y}})%>%
+    summarize(n = n())
+  name <- colnames(df_n)
+  varname <- paste(name[1], name[2], "n", sep="_")
+  names(df_n)[3] <- as.character(varname[1])
+  df_n$obs <- 362003
+  return(df_n)
+  }
+
+
+n_3 <- function(df, x, y, z){
+  df_n <- df %>%
+    group_by({{x}}, {{y}}, {{z}})%>%
+    summarize(n = n())
+  name <- colnames(df_n)
+  varname <- paste(name[1], name[2], name[3],"n", sep="_")
+  names(df_n)[4] <- as.character(varname[1])
+  df_n$obs <- 362003
+  return(df_n)
+}
+
+n_4 <- function(df, x, y, z, w){
+  df_n <- df %>%
+    group_by({{x}}, {{y}}, {{z}}, {{w}})%>%
+    summarize(n = n())
+  name <- colnames(df_n)
+  varname <- paste(name[1], name[2], name[3], name[4],"n", sep="_")
+  names(df_n)[5] <- as.character(varname[1])
+  df_n$obs <- 362003
+  return(df_n)
+  }
+
+
+join <- function(df_1, df_2, df_3, df_4, df_5){
+  df_n <- full_join(df_5, df_2)
+  df_n <- full_join(df_n, df_3)
+  df_n <- full_join(df_n, df_4)
+  df_n <- full_join(df_n, df_1)
+}
+```
+
+
+
+```{r}
+scale_cntry <- n_1(scale, cntry)
+scale_year <- n_1(scale, year)
+scale_auto_cat <- n_1(scale, auto_cat)
+scale_dikotom <- n_1(scale, dikotom)
+scale_cntry_year <- n_2(scale, cntry, year)
+scale_cntry_year_dikotom <- n_3(scale, cntry, year, dikotom)
+scale_cntry_year_dikotom_cat <- n_4(scale, cntry, year, dikotom, auto_cat)
+scale_n <- join(scale_cntry, scale_year, scale_auto_cat, scale_dikotom, scale_cntry_year_dikotom)
+```
+
+

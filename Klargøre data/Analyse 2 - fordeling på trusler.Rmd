@@ -1,0 +1,168 @@
+---
+title: "Analyse 2 - Fordeling på trusler"
+author: "Eva Tryde"
+date: "10/4/2021"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE, message=FALSE}
+library(tidyverse)
+library(ggpubr)
+library(effects)
+library(knitr)
+library(ggplot2) 
+library(jtools)
+library(interplot)
+library(statisticalModeling)
+library(margins)
+library(psych)
+library(robustbase)
+library(extrafont)
+loadfonts()
+```
+
+```{r data, message=FALSE}
+ess <- read.csv("../data/ess_treated.csv")
+auto  <- read.csv("../data/auto_scale.csv")
+rtv_merge <- read_csv("../../RTV trussel/RTV/data/rtv_merge.csv")
+```
+
+```{r, message=FALSE}
+rtv_merge <- rtv_merge %>%
+  rename(year = merge_year)%>%
+  filter(year >= 2002)%>%
+  dplyr::select(cntry, year, n_de_mu_im_pop, n_de_mu_im_3_pop)
+
+ess$year<- ess$int.year
+flip <- function(x){
+  6 - x
+}
+ess <- mutate_at(ess, .vars=c("livecntr"), flip)
+ess <- mutate_at(ess, .vars=c("mnrgtjb"), flip)
+
+ess$livecntr[ess$brncntr != 2] <- 0
+ess <- ess %>%
+  dplyr::filter(cntry %in% c(
+  "NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT",
+  "FI", "GR", "CH", "IE", "BE", "LU", "IS"))%>%
+  filter(dikotom == "muslim")%>%
+  dplyr::select(essround, id, cntry, freehms, mnrgtjb, rlgdgr, year, income, educ.ba, female, age, livecntr)
+
+samlet_rtv <- left_join(ess, rtv_merge, by = c("cntry", "year"))
+
+auto <- auto %>%
+  dplyr::select(id, cntry, PVQ, auto_cat, essround)
+
+samlet_ess <- left_join(samlet_rtv, auto, by =c("id", "cntry", "essround"))
+samlet_ess$income[samlet_ess$income %in% c(11,12)] <- NA
+samlet_ess$angreb[samlet_ess$n_de_mu_im_pop == 0] <- "Ingen angreb"
+samlet_ess$angreb[samlet_ess$n_de_mu_im_pop > 0] <- "Angreb"
+samlet_ess$angreb <- factor(samlet_ess$angreb, levels = c("Ingen angreb","Angreb" ))
+```
+
+
+```{r}
+rm(auto, ess, rtv_merge, samlet_rtv, flip)
+```
+
+```{r}
+samlet_ess$livecntr_f[samlet_ess$livecntr == 0] <- "Født i landet"
+samlet_ess$livecntr_f[samlet_ess$livecntr == 1] <- "Mere end 20 år"
+samlet_ess$livecntr_f[samlet_ess$livecntr == 2] <- "Mellem 11 og 20 år"
+samlet_ess$livecntr_f[samlet_ess$livecntr == 3] <- "Mellem 6 og 10 år"
+samlet_ess$livecntr_f[samlet_ess$livecntr %in% c(4,5)] <- "Mellem 0 og 5 år"
+samlet_ess$livecntr_f <- as.factor(samlet_ess$livecntr_f)
+
+
+samlet_ess <- samlet_ess%>%
+  filter(!is.na(PVQ), !is.na(n_de_mu_im_pop))%>%
+  dplyr::select(-c())
+```
+
+
+
+```{r, fig.width=7.5, height=2.5}
+png(file="../figures/analyse 2/antal angreb med nul.png", width = 6.5, height = 2, units = "in", res=500)
+med_nul <- ggplot(samlet_ess, aes(n_de_mu_im_pop))+
+  geom_density(color="black", fill="#de7065ff")+
+  scale_x_continuous(expand = c(0,0), breaks = seq(0,0.5, by = 0.05))+
+  scale_y_continuous(expand = c(0,0))+
+  xlab("")+
+  ylab("Denisitet")+
+  labs(subtitle = "A. Fordeling af trusler med observationer hvor trussel kan være nul")+
+  theme_classic()+
+  theme(text=element_text(family = "CM Roman"))+
+  theme(plot.title = element_text(family = "CM Roman", size = 13),
+        plot.subtitle = element_text(family = "CM Roman", size = 12),
+        axis.text = element_text(family = "CM Roman", size = 10),
+        axis.title = element_text(family = "CM Roman", size = 11))+
+  theme(legend.position = "none")+
+  theme(plot.margin=unit(c(.2,.5,.2,.2),"cm"))
+print(med_nul)
+dev.off()
+print(med_nul)
+
+
+
+samlet_density <- samlet_ess%>%
+  filter(n_de_mu_im_pop !=0)
+
+png(file="../figures/analyse 2/antal angreb uden nul.png", width = 6.5, height = 2, units = "in", res=500)
+uden_nul <- ggplot(samlet_density, aes(n_de_mu_im_pop))+
+  geom_density(color="black", fill="#de7065ff")+
+  scale_x_continuous(expand = c(0,0), breaks = seq(0,0.5, by = 0.05))+
+  scale_y_continuous(expand = c(0,0))+
+  xlab("Antal døde i terrorangreb det forgående år pr. million indbygger")+
+  ylab("Denisitet")+
+  labs(subtitle = "B. Fordeling af trusler uden observationer hvor trussel kan være nul")+
+  theme_classic()+
+  theme(text=element_text(family = "CM Roman"))+
+  theme(plot.title = element_text(family = "CM Roman", size = 13),
+        plot.subtitle = element_text(family = "CM Roman", size = 12),
+        axis.text = element_text(family = "CM Roman", size = 10),
+        axis.title = element_text(family = "CM Roman", size = 11, margin = margin(c(0,0,0,0))))+
+  theme(legend.position = "none")+
+  theme(plot.margin=unit(c(.2,.5,.2,.2),"cm"))
+
+print(uden_nul)
+dev.off()
+print(uden_nul)
+
+```
+
+
+```{r, fig.width=7.5, height=2.5}
+obs_angreb_0 <- samlet_ess %>%
+  filter(n_de_mu_im_pop == 0)%>%
+  count()
+obs_angreb_0 <- as.numeric(obs_angreb_0[1,1])
+
+obs_angreb_1 <- samlet_ess %>%
+  filter(n_de_mu_im_pop != 0)%>%
+  filter(!is.na(n_de_mu_im_pop))%>%
+  count()
+obs_angreb_1 <- as.numeric(obs_angreb_1[1,1])
+
+andel_med_angreb <- obs_angreb_1/(obs_angreb_1+obs_angreb_0)
+andel_med_angreb
+
+obs_angreb_1
+
+samlet_ess <- samlet_ess%>%
+  filter(!is.na(n_de_mu_im_pop))
+```
+
+
+```{r}
+png(file="../figures/analyse 2/angreb 1.png", width = 6.5, height = 4, units = "in", res=500)
+
+plot <-  ggarrange(med_nul, uden_nul, nrow=2) 
+plot
+dev.off()
+```
+```{r}
+
+```
+

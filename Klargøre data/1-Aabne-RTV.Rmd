@@ -1,0 +1,221 @@
+---
+title: "1 Aabne RTV data"
+output: html_notebook
+---
+
+# Preamble
+
+åbne data og hente pakker
+
+```{r hente pakker, message=FALSE, include=FALSE, echo=FALSE}
+library(tidyverse)
+library(readxl)
+```
+
+```{r åbne data, message=FALSE, include=FALSE, echo=FALSE}
+rtv <- read_excel("../data/rtv original.xlsx")
+```
+
+Variabler i datasæt
+
+```{r}
+colnames(rtv)
+```
+
+jeg forkorter variabler navne og fravælger de variabler som jeg ikke skal bruge -dvs. 1, 3, 4, 6, 19, 20. Jeg laver egne CaseID variable, da dette ikke er inkluderet i limited rtv data
+
+```{r}
+names(rtv)[1] <- "CaseId"
+names(rtv)[2] <- "V2"
+names(rtv)[5] <- "V5"
+names(rtv)[7] <- "V7"
+names(rtv)[8] <- "V8"
+names(rtv)[9] <- "V9"
+names(rtv)[10] <- "V10"
+names(rtv)[11] <- "V11"
+names(rtv)[12] <- "V12"
+names(rtv)[13] <- "V13"
+names(rtv)[14] <- "V14"
+names(rtv)[15] <- "V15"
+names(rtv)[16] <- "V16"
+names(rtv)[17] <- "V17"
+names(rtv)[18] <- "V18"
+
+rtv <- rtv %>%
+  mutate(CaseId = row_number())%>%
+  select(-c(3, 4, 6, 19, 20))
+```
+
+## Lande data
+
+Skaber to variabler, som muliggøre at merge data mellem ess og rtv data
+
+-   cntry: Skabe lande variable, som stemmer ens med ess lande koder
+-   label: landevariable med lande hele navne
+
+Først laver jeg dataframe som hedder cntry, som indeholder rtv lande variable v5, cntry og label
+
+```{r lande variabler datasæt, message=FALSE, include=FALSE, echo=FALSE}
+cntry <- rtv %>%
+  summarize(V5 = unique(V5)) %>%
+  mutate(cntry = case_when(
+    V5 == 10 ~ "AT",
+    V5 == 11 ~ "BE",
+    V5 == 12 ~ "DK",
+    V5 == 13 ~ "FI",
+    V5 == 14 ~ "FR",
+    V5 == 15 ~ "DE",
+    V5 == 16 ~ "GR",
+    V5 == 17 ~ "IS",
+    V5 == 18 ~ "IE",
+    V5 == 19 ~ "IT",
+    V5 == 20 ~ "LU",
+    V5 == 21 ~ "NL",
+    V5 == 22 ~ "NO",
+    V5 == 23 ~ "PT",
+    V5 == 24 ~ "ES",
+    V5 == 25 ~ "SE",
+    V5 == 26 ~ "CH",
+    V5 == 27 ~ "GB"
+  ))%>%
+  mutate(label = case_when(
+    cntry == "AT" ~ "Østrig",
+    cntry == "NO" ~ "Norge",
+    cntry == "SE" ~ "Sverige",
+    cntry == "DK" ~ "Danmark",
+    cntry == "DE" ~ "Tyskland",
+    cntry == "IT" ~ "Italien",
+    cntry == "ES" ~ "Spanien",
+    cntry == "NL" ~ "Nederland",
+    cntry == "FR" ~ "Frankrig",
+    cntry == "PT" ~ "Portugal",
+    cntry == "FI" ~ "Finland",
+    cntry == "GR" ~ "Grækenland",
+    cntry == "CH" ~ "Schweiz",
+    cntry == "IE" ~ "Irland",
+    cntry == "BE" ~ "Belgium",
+    cntry == "GB" ~ "United Kingdom"))
+
+rtv <- left_join(rtv, cntry, by = "V5")
+rm(cntry)
+```
+
+## Omkode af variabler
+
+-   variable V17 og V18 som dækker over døde og tilskadekommende er "m" missing data. Laver "m" over til na
+
+```{r}
+rtv$V17[rtv$V17 == "m"] <- NA
+rtv$V18[rtv$V18 == "m"] <- NA
+rtv$V18 <- as.numeric(rtv$V18)
+```
+
+```{r}
+rtv$V12[rtv$V12 == 99] <- NA
+```
+
+# Gemme data
+```{r}
+write_csv(rtv, "../data/rtv_behandlet.csv")
+```
+
+skaber 6 varaibler som bruges som trusler variabler 
+
+- alle angreb - pr år pr. land  - musilm
+- alle angreb - pr år pr. land  - immigranter
+- alle angreb - pr år pr. land  - musilm + immigranter
+- dødelige angreb - pr år pr. land  - musilm
+- dødelige angreb - pr år pr. land  - immigranter
+- dødelige angreb - pr år pr. land  - musilm + immigranter
+```{r}
+merge_var <- rtv%>%
+  select(V2, cntry)
+merge_var <- unique(merge_var)
+```
+
+```{r}
+al_mu <- rtv %>%
+  select(V2, cntry, V12)%>%
+  group_by(V2, cntry)%>%
+  filter(V12 == 2)%>%
+  add_tally()%>%
+  rename(al_mu = n)%>%
+  select(-V12)
+al_mu <- unique(al_mu)
+
+al_im <- rtv %>%
+  select(V2, cntry, V12)%>%
+  group_by(V2, cntry)%>%
+  filter(V12 == 3)%>%
+  add_tally()%>%
+  rename(al_im = n)%>%
+  select(-V12)
+al_im <- unique(al_im)
+
+al_mu_im <- rtv %>%
+  select(V2, cntry, V12)%>%
+  group_by(V2, cntry)%>%
+  filter(V12 %in% c(2,3))%>%
+  add_tally()%>%
+  rename(al_mu_im = n)%>%
+  select(-V12)
+al_mu_im <- unique(al_mu_im)
+
+de_mu <- rtv %>%
+  select(V2, cntry, V12, V17)%>%
+  group_by(V2, cntry)%>%
+  filter(V17 > 0)%>%
+  filter(V12 == 2)%>%
+  add_tally()%>%
+  rename(de_mu = n)%>%
+  mutate(n_de_mu = sum(V17))%>%
+  select(-c(V12, V17))
+de_mu <- unique(de_mu)
+
+de_im <- rtv %>%
+  select(V2, cntry, V12, V17)%>%
+  group_by(V2, cntry)%>%
+  filter(V17 > 0)%>%
+  filter(V12 == 3)%>%
+  add_tally()%>%
+  rename(de_im = n)%>%
+  mutate(n_de_im = sum(V17))%>%
+  select(-c(V12, V17))
+de_im <- unique(de_im)
+
+de_mu_im <- rtv %>%
+  select(V2, cntry, V12, V17)%>%
+  group_by(V2, cntry)%>%
+  filter(V17 > 0)%>%
+  filter(V12 %in% c(2,3))%>%
+  add_tally()%>%
+  rename(de_mu_im = n)%>%
+  mutate(n_de_mu_im = sum(V17))%>%
+  select(-c(V12, V17))
+de_mu_im <- unique(de_mu_im)
+```
+
+
+```{r}
+rtv_merge <- full_join(merge_var, al_mu, by = c("V2", "cntry"))
+rtv_merge <- full_join(rtv_merge, al_im, by = c("V2", "cntry"))
+rtv_merge <- full_join(rtv_merge, al_mu_im, by = c("V2", "cntry"))
+rtv_merge <- full_join(rtv_merge, de_mu, by = c("V2", "cntry"))
+rtv_merge <- full_join(rtv_merge, de_im, by = c("V2", "cntry"))
+rtv_merge <- full_join(rtv_merge, de_mu_im, by = c("V2", "cntry"))
+
+rtv_merge <- rtv_merge%>%
+  mutate(merge_year = V2+1)
+
+rtv_merge[is.na(rtv_merge)] <- 0
+```
+
+```{r}
+write_csv(rtv_merge, ("../data/rtv_merge.csv"))
+```
+
+```{r}
+rm(rtv_merge, rtv_merge1)
+```
+
+

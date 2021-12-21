@@ -1,0 +1,306 @@
+---
+title: "Personer med muslimsk baggrund og majoritetens fordeling på sociodemografiske faktorer"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, include=FALSE}
+library(tidyverse)
+library(psych)
+library(car)
+library(ggpubr)
+library(stargazer)
+library(broom)
+library(ggplot2)
+library(performance)
+library(see)
+library(qqplotr)
+library(reshape2)
+library(robustbase)
+library(estimatr)
+library(interplot)
+library(ggpubr)
+library(lmtest)
+library(ggeffects)
+library(extrafont)
+loadfonts()
+library(viridis)
+library(patchwork)
+
+
+```
+
+```{r data, message=FALSE}
+ess <- read.csv("../data/ess_treated.csv")
+auto  <- read.csv("../data/auto_scale.csv")
+```
+
+```{r, message=FALSE}
+ess <- ess %>%
+  filter(cntry %in% c(
+  "NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT",
+  "FI", "GR", "CH", "IE", "BE", "LU", "IS"))%>%
+  filter(dikotom %in% c("muslim", "majority"))%>%
+  dplyr::select(id, cntry, rlgdgr, income, educ.ba, female, age, dikotom, essround)
+
+auto <- auto %>%
+  dplyr::select(id, cntry, PVQ, auto_cat, essround)
+
+samlet_ess <- left_join(ess, auto, by =c("id", "cntry", "essround"))
+
+samlet_ess$income[samlet_ess$income %in% c(11,12)] <- NA
+
+rm(ess, auto)
+```
+
+```{r}
+lm <- lmrob(PVQ ~ dikotom + cntry, data = samlet_ess)
+#lm_m <- lm(PVQ ~ dikotom + rlgdgr + female + income + educ.ba + age, data = samlet_ess)
+lm_m_rob <- lmrob(PVQ ~ dikotom + rlgdgr + female + income + educ.ba + age + cntry, data = samlet_ess)
+
+stargazer(lm, lm_m_rob, type = "latex", single.row = FALSE)
+```
+
+
+```{r}
+df <- samlet_ess %>%
+  filter(!is.na(rlgdgr) & !is.na(income) & !is.na(educ.ba) & !is.na(female) & !is.na(age) & !is.na(PVQ))%>%
+  dplyr::select(c("PVQ", "rlgdgr", "income", "educ.ba", "female", "age", "dikotom", "auto_cat"))
+df$fit.r <- lm_m_rob$residuals
+df$fit.p <- lm_m_rob$fitted.values
+```
+
+\#placering på kontrol variabler
+
+```{r fig.width=7.5, fig.height=4}
+#detach(package:Rmisc)
+detach(package:plyr)
+
+#png(file="../figures/analyse 1/indkomst fordeling.png", width = 7.5, height = 4, units = "in", res=500)
+precent_income <- df %>%
+  mutate(income = as.factor(income))%>%
+    count(income, dikotom) %>%
+    group_by(dikotom) %>%
+    mutate(percent = (n / sum(n))) %>%
+    ungroup()
+
+dikotom.lab <- c("A. Majoriteten", "B. Muslimsk baggrund")
+names(dikotom.lab) <- c("majority", "muslim")
+
+p <- ggplot(precent_income, aes(x = income, y = percent, fill = dikotom)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.7)+
+      labs(title="Indkomst fordeling",
+         x="Indkomst decil",
+         y="Procent") +
+  facet_wrap(~dikotom, labeller = labeller(dikotom = dikotom.lab))+
+  scale_fill_manual(name = "", 
+                    values = c("majority" = "#641A80FF", "muslim" = "#FE9F6DFF"))+
+  scale_y_continuous(labels=scales::percent, limits = c(0,0.15), 
+                     expand = c(0,0), breaks = c(0, 0.05, 0.1, 0.15),
+                     minor_breaks = seq(0, 0.15, by = 0.01)) +
+  theme_classic()+
+  theme(panel.grid.minor.y = element_line(size = 0.5), 
+        panel.grid.major.y = element_line(size = 1))+
+  theme(legend.position = "none")+
+  theme(strip.placement = "outside",
+        strip.background = element_blank(),
+        panel.spacing.y = unit(1, "lines"),
+        strip.text = element_text(size = 11, family = "CM Roman"))+
+  theme(text=element_text(family = "CM Roman"))+
+  theme(plot.title = element_text(family = "CM Roman", size = 12, hjust = 0.5),
+        axis.text = element_text(family = "CM Roman", size = 10),
+        axis.title = element_text(family = "CM Roman", size = 11))
+
+print(p)
+#dev.off()
+#print(p)
+```
+
+
+
+```{r}
+#detach(package:plyr)
+precent_ba <- df %>%
+  mutate(educ.ba = as.factor(educ.ba))%>%
+    count(educ.ba, dikotom) %>%
+    group_by(dikotom) %>%
+    mutate(percent = (n / sum(n))) %>%
+    ungroup()%>%
+  filter(educ.ba==1)
+
+precent_ba$fill[precent_ba$dikotom == "majority"] <- "Majoriteten"
+precent_ba$fill[precent_ba$dikotom == "muslim"] <- "Muslimsk \nbaggrund"
+
+
+ba <- ggplot(precent_ba, aes(x = fill, y = percent))+
+  geom_bar(stat="identity", aes(fill = dikotom), alpha = 0.7)+
+  theme_classic()+
+  labs(title = "B. Har en Bachelor grad")+
+  xlab("") +
+  ylab("Andel")+
+  scale_y_continuous(labels=scales::percent, limits = c(0,0.3), 
+                     expand = c(0,0), breaks = seq(0, 0.3, by = 0.05))+
+  scale_fill_manual(name = "", 
+                    values = c("majority" = "#641A80FF", "muslim" = "#FE9F6DFF"))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family = "CM Roman"))+
+  theme(plot.title = element_text(family = "CM Roman", 
+                                  size = 12, 
+                                  hjust = 0.5,
+                                  margin = margin(10, 0, 20, 0)),
+        plot.caption = element_text(family = "CM Roman", 
+                                  size = 10),
+        axis.text.x = element_text(family = "CM Roman", 
+                                 size = 11),
+        axis.text.y = element_text(family = "CM Roman", 
+                                 size = 10),
+        legend.text = element_text(family = "CM Roman", 
+                                  size = 10),
+        legend.title = element_text(family = "CM Roman", 
+                                  size = 10),
+        axis.title = element_text(family = "CM Roman", 
+                                  size = 11))+
+     theme(plot.margin = unit(c(6,0,6,0), "pt"))+
+  theme(axis.text.x = element_text(colour = "black"))
+ba
+```
+
+```{r fig.width=5, fig.height=4}
+precent_income <- df %>%
+  mutate(income = as.factor(income))%>%
+    count(income, dikotom) %>%
+    group_by(dikotom) %>%
+    mutate(percent = (n / sum(n))) %>%
+    ungroup()
+
+dikotom.lab <- c("Majoriteten", "Muslimsk baggrund")
+names(dikotom.lab) <- c("majority", "muslim")
+
+indkomst_l <- ggplot(precent_income, aes(x = income, y = percent, fill = dikotom)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.7)+
+      labs(title="Indkomst fordeling",
+         x="Indkomst decil",
+         y="Procent") +
+  facet_wrap(~dikotom, labeller = labeller(dikotom = dikotom.lab))+
+  scale_fill_manual(name = "", 
+                    values = c("majority" = "#641A80FF", "muslim" = "#FE9F6DFF"),
+                    label = c("Majoriteten", "Muslimsk baggrund"))+
+  scale_y_continuous(labels=scales::percent, limits = c(0,0.15), 
+                     expand = c(0,0), breaks = c(0, 0.05, 0.1, 0.15),
+                     minor_breaks = seq(0, 0.15, by = 0.01)) +
+  theme_classic()+
+  theme(panel.grid.minor.y = element_line(size = 0.5), 
+        panel.grid.major.y = element_line(size = 1))+
+  theme(legend.position = "bottom")+
+  theme(strip.placement = "outside",
+        strip.background = element_blank(),
+        panel.spacing.y = unit(1, "lines"),
+        strip.text = element_text(size = 11, family = "CM Roman"))+
+  theme(text=element_text(family = "CM Roman"))+
+  theme(plot.title = element_text(family = "CM Roman", 
+                                  size = 12, 
+                                  hjust = 0.5,
+                                  margin = margin(10, 0, 20, 0)),
+        axis.text = element_text(family = "CM Roman", 
+                                 size = 10),
+        axis.title = element_text(family = "CM Roman", 
+                                  size = 11),
+        plot.caption = element_text(family = "CM Roman", 
+                                  size = 10),
+        legend.text = element_text(family = "CM Roman", 
+                                  size = 10),
+        legend.title = element_text(family = "CM Roman", 
+                                  size = 10)
+        )+
+     theme(plot.margin = unit(c(6,0,6,0), "pt"))
+
+legend_b <- get_legend(indkomst_l + theme(legend.position="bottom"))
+
+indkomst <- ggplot(precent_income, aes(x = income, y = percent, fill = dikotom)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.7)+
+      labs(title="A. Indkomst fordeling",
+         x="Indkomst decil",
+         y="Procent") +
+  facet_wrap(~dikotom, labeller = labeller(dikotom = dikotom.lab))+
+  scale_fill_manual(name = "", 
+                    values = c("majority" = "#641A80FF", "muslim" = "#FE9F6DFF"),
+                    label = c("Majoriteten", "Muslimsk baggrund"))+
+  scale_y_continuous(labels=scales::percent, limits = c(0,0.15), 
+                     expand = c(0,0), breaks = c(0, 0.05, 0.1, 0.15),
+                     minor_breaks = seq(0, 0.15, by = 0.01)) +
+  theme_classic()+
+  theme(panel.grid.minor.y = element_line(size = 0.5), 
+        panel.grid.major.y = element_line(size = 1))+
+  theme(legend.position = "none")+
+  theme(strip.placement = "outside",
+        strip.background = element_blank(),
+        panel.spacing.y = unit(1, "lines"),
+        strip.text = element_text(size = 11, family = "CM Roman"))+
+  theme(text=element_text(family = "CM Roman"))+
+  theme(plot.title = element_text(family = "CM Roman", 
+                                  size = 12, 
+                                  hjust = 0.5,
+                                  margin = margin(10, 0, 20, 0)),
+        axis.text = element_text(family = "CM Roman", 
+                                 size = 10),
+        axis.title = element_text(family = "CM Roman", 
+                                  size = 11),
+        plot.caption = element_text(family = "CM Roman", 
+                                  size = 10),
+        legend.text = element_text(family = "CM Roman", 
+                                  size = 10),
+        legend.title = element_text(family = "CM Roman", 
+                                  size = 10)
+        )+
+     theme(plot.margin = unit(c(6,0,6,0), "pt"))
+
+indkomst
+
+```
+
+
+```{r fig.width=7.5, fig.height=4.5}
+png(file="../figures/analyse 1/indkomst + ba.png", width = 7.5, height = 4.5, units = "in", res=500)
+plot_sam <-  (indkomst + ba + plot_layout(widths = c(2.5, 1)))
+plot_sam <- plot_sam/ legend_b + plot_layout(heights = unit(c(6, 1), c('cm', 'null')))
+plot_sam
+dev.off()
+plot_sam
+```
+
+
+```{r}
+ttest <- stats::t.test(income ~ dikotom, data = samlet_ess, var.equal = FALSE)
+ttest$statistic
+ttest
+
+tapply(samlet_ess$income, samlet_ess$dikotom, mean, na.rm=TRUE)
+
+tapply(samlet_ess$income, samlet_ess$dikotom, sd, na.rm=TRUE)
+```
+```{r}
+ttest <- stats::t.test(educ.ba ~ dikotom, data = samlet_ess, var.equal = FALSE)
+ttest$statistic
+ttest
+
+tapply(samlet_ess$educ.ba, samlet_ess$dikotom, mean, na.rm=TRUE)
+
+tapply(samlet_ess$educ.ba, samlet_ess$dikotom, sd, na.rm=TRUE)
+```
+
+
+```{r}
+ttest <- stats::t.test(age ~ dikotom, data = samlet_ess, var.equal = FALSE)
+ttest$statistic
+ttest
+
+tapply(samlet_ess$age, samlet_ess$dikotom, mean, na.rm=TRUE)
+
+tapply(samlet_ess$age, samlet_ess$dikotom, sd, na.rm=TRUE)
+```
+

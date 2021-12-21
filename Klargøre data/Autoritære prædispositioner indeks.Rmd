@@ -1,0 +1,243 @@
+---
+title: "Autoritære prædispositioner indeks"
+author: "Eva Tryde"
+date: "1/5/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, include=FALSE}
+library(tidyverse)
+library(psych)
+library(stargazer)
+library(broom)
+library(performance)
+library(purrr)
+```
+
+```{r}
+auto  <- read.csv("../data/auto_indeks.csv")
+```
+
+Meget kompliceret, men autoritære prædisposition indekset er overordnet indeks, som er dannet af 2 indeks, som hver er dannet af henholdsvis 3 og 2 indeks.
+
+```{r}
+security <- auto%>%
+  select(c(v5, v14))%>%
+  mutate(security = sum(v5, v14, na.rm = TRUE))
+security.cor <- cor(security)
+security.cor
+performance::item_intercor(security.cor, method = c("pearson"))
+```
+
+```{r}
+conformity <- auto%>%
+  select(c(v7, v16))
+conformity.cor <- cor(conformity)
+conformity.cor
+performance::item_intercor(conformity.cor, method = c("pearson"))
+```
+
+```{r}
+tradition <- auto%>%
+  select(c(v9, v20))
+tradition.cor <- cor(tradition)
+tradition.cor
+performance::item_intercor(tradition.cor, method = c("pearson"))
+```
+
+```{r}
+stimulation <- auto%>%
+  select(c(v6, v15))
+stimulation.cor <- cor(stimulation)
+stimulation.cor
+performance::item_intercor(stimulation.cor, method = c("pearson"))
+```
+
+```{r, include=TRUE}
+selfdirection <- auto%>%
+  select(c(v1, v11))
+selfdirection.cor <- cor(selfdirection)
+selfdirection.cor
+performance::item_intercor(selfdirection.cor, method = c("pearson"))
+psych::alpha(selfdirection)
+```
+
+```{r}
+alpha.fun <- function(df, n){
+item <- df %>% 
+  psych::alpha(check.keys = TRUE) %>% 
+  .$item.stats 
+raw <- df %>%
+  psych::alpha(check.keys = TRUE) %>% 
+  .$total
+item <- item[1,4]
+raw <- raw[,1:2]
+df_n <- bind_cols(item, raw)
+rm(item, raw)
+names(df_n)[1] <- "item.cor"
+df_n$scale <- n
+return(df_n)
+}
+
+```
+
+```{r, echo=FALSE, message=FALSE}
+security_alpha <- alpha.fun(security, n = "security")
+conformity_alpha <- alpha.fun(conformity, n = "conformity")
+tradition_alpha <- alpha.fun(tradition, n = "tradition")
+stimulation_alpha <- alpha.fun(stimulation, n = "stimulation")
+selfdirection_alpha <- alpha.fun(selfdirection, n = "selfdirection")
+alpha_df <- bind_rows(security_alpha, conformity_alpha, tradition_alpha, stimulation_alpha, selfdirection_alpha)
+rm(security_alpha, conformity_alpha, tradition_alpha, stimulation_alpha, selfdirection_alpha)
+rownames(alpha_df) <- 1:nrow(alpha_df)
+
+```
+
+```{r}
+security_df <- auto%>%
+  select(c(id, v5, v14))%>%
+  mutate(security = v5 + v14)
+
+conformity_df <- auto%>%
+  select(c(id, v7, v16))%>%
+  mutate(conformity = v7 + v16)
+
+tradition_df <- auto%>%
+  select(c(id,v9, v20))%>%
+  mutate(tradition = v9 + v20)
+
+konservativ <- full_join(security_df, conformity_df)
+konservativ <- full_join(konservativ, tradition_df)
+
+rm(security_df, conformity_df, tradition_df)
+konservativ.sum<- konservativ%>%
+  select(c(security, conformity, tradition))
+konservativ.items <- konservativ%>%
+  select(c(v5, v14, v7, v16, v9, v20))
+```
+
+```{r}
+konservativ.items.cor <- cor(konservativ.items)
+konservativ.items.cor
+performance::item_intercor(konservativ.items.cor, method = c("pearson"))
+psych::alpha(konservativ.items)
+```
+
+```{r}
+library(xtable)
+corstars <-function(x, method=c("pearson", "spearman"), removeTriangle=c("upper", "lower"),
+                     result=c("none", "html", "latex")){
+    #Compute correlation matrix
+    require(Hmisc)
+    x <- as.matrix(x)
+    correlation_matrix<-rcorr(x, type=method[1])
+    R <- correlation_matrix$r # Matrix of correlation coeficients
+    p <- correlation_matrix$P # Matrix of p-value 
+    
+    ## Define notions for significance levels; spacing is important.
+    mystars <- ifelse(p < .0001, "****", ifelse(p < .001, "*** ", ifelse(p < .01, "**  ", ifelse(p < .05, "*   ", "    "))))
+    
+    ## trunctuate the correlation matrix to two decimal
+    R <- format(round(cbind(rep(-1.11, ncol(x)), R), 2))[,-1]
+    
+    ## build a new matrix that includes the correlations with their apropriate stars
+    Rnew <- matrix(paste(R, mystars, sep=""), ncol=ncol(x))
+    diag(Rnew) <- paste(diag(R), " ", sep="")
+    rownames(Rnew) <- colnames(x)
+    colnames(Rnew) <- paste(colnames(x), "", sep="")
+    
+    ## remove upper triangle of correlation matrix
+    if(removeTriangle[1]=="upper"){
+      Rnew <- as.matrix(Rnew)
+      Rnew[upper.tri(Rnew, diag = TRUE)] <- ""
+      Rnew <- as.data.frame(Rnew)
+    }
+    
+    ## remove lower triangle of correlation matrix
+    else if(removeTriangle[1]=="lower"){
+      Rnew <- as.matrix(Rnew)
+      Rnew[lower.tri(Rnew, diag = TRUE)] <- ""
+      Rnew <- as.data.frame(Rnew)
+    }
+    
+    ## remove last column and return the correlation matrix
+    Rnew <- cbind(Rnew[1:length(Rnew)-1])
+    if (result[1]=="none") return(Rnew)
+    else{
+      if(result[1]=="html") print(xtable(Rnew), type="html")
+      else print(xtable(Rnew), type="latex") 
+    }
+} 
+```
+
+```{r}
+cronbachs_alpha(konservativ.items)
+```
+
+```{r}
+corstars(konservativ.items, removeTriangle="upper",
+                     result="latex")
+
+```
+
+```{r}
+stimulation_df <- auto%>%
+  select(c(id, v6, v15))%>%
+  mutate(stimulation = v6 + v15)
+selfdirection_df <- auto%>%
+  select(c(id, v1, v11))%>%
+  mutate(selfdirection = v1 + v11)
+åbenhed <- full_join(stimulation_df, selfdirection_df)
+rm(stimulation_df, selfdirection_df)
+
+
+åbenhed.sum<- åbenhed%>%
+  select(c(stimulation, selfdirection))
+åbenhed.items <- åbenhed%>%
+  select(c(v6, v15, v1, v11))
+psych::alpha(åbenhed.items)
+
+
+corstars(åbenhed.items, removeTriangle="upper",
+                     result="latex")
+cronbachs_alpha(åbenhed.items)
+
+```
+
+```{r}
+corstars(konservativ.sum, removeTriangle="upper",
+                     result="latex")
+```
+
+```{r}
+corstars(åbenhed.sum, removeTriangle="upper",
+                     result="latex")
+```
+
+```{r}
+sum.indeks <- bind_cols(konservativ.sum, åbenhed.sum)
+corstars(sum.indeks, removeTriangle="upper",
+                     result="latex")
+```
+```{r}
+åbenhed.sum <- åbenhed.sum %>%
+  mutate(åbenhed = stimulation + selfdirection)
+åbenhed.sum$åbenhed <- scales::rescale(åbenhed.sum$åbenhed, to = c(0,10))
+åbenhed.sum <- åbenhed.sum %>%
+  mutate(åbenhed = 10 - åbenhed)
+
+
+konservativ.sum <- konservativ.sum %>%
+  mutate(åbenhed = security  + conformity + tradition )
+konservativ.sum$konservatisme <- scales::rescale(konservativ.sum$konservatisme, to = c(0,10))
+
+indeks <- bind_cols(konservativ.sum$konservatisme, åbenhed.sum$åbenhed)
+
+```
+

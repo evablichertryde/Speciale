@@ -1,0 +1,162 @@
+---
+title: "Analyse 2 - Antal angreb"
+author: "Eva Tryde"
+date: "10/4/2021"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE, message=FALSE}
+library(tidyverse)
+library(ggpubr)
+library(effects)
+library(stargazer)
+library(knitr)
+library(ggplot2) 
+library(jtools)
+library(interplot)
+library(statisticalModeling)
+library(prediction)
+library(margins)
+library(psych)
+library(robustbase)
+library(extrafont)
+loadfonts()
+```
+
+
+```{r data, message=FALSE}
+ess <- read.csv("../data/ess_treated.csv")
+auto  <- read.csv("../data/auto_scale.csv")
+rtv_merge <- read_csv("../../RTV trussel/RTV/data/rtv_merge.csv")
+```
+
+```{r, message=FALSE}
+rtv_merge <- rtv_merge %>%
+  rename(year = merge_year)%>%
+  filter(year >= 2002)%>%
+  dplyr::select(cntry, year, n_de_mu_im_pop, n_de_mu_im_3_pop)
+
+ess$year<- ess$int.year
+flip <- function(x){
+  6 - x
+}
+ess <- mutate_at(ess, .vars=c("livecntr"), flip)
+ess <- mutate_at(ess, .vars=c("mnrgtjb"), flip)
+
+ess$livecntr[ess$brncntr != 2] <- 0
+ess <- ess %>%
+  dplyr::filter(cntry %in% c(
+  "NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT",
+  "FI", "GR", "CH", "IE", "BE", "LU", "IS"))%>%
+  filter(dikotom == "muslim")%>%
+  dplyr::select(essround, id, cntry, freehms, mnrgtjb, rlgdgr, year, income, educ.ba, female, age, livecntr)
+
+samlet_rtv <- left_join(ess, rtv_merge, by = c("cntry", "year"))
+
+auto <- auto %>%
+  dplyr::select(id, cntry, PVQ, auto_cat, essround)
+
+samlet_ess <- left_join(samlet_rtv, auto, by =c("id", "cntry", "essround"))
+samlet_ess$income[samlet_ess$income %in% c(11,12)] <- NA
+```
+
+
+```{r}
+rm(auto, ess, rtv_merge, samlet_rtv, flip)
+```
+
+```{r}
+samlet_ess$livecntr_f[samlet_ess$livecntr == 0] <- "Født i landet"
+samlet_ess$livecntr_f[samlet_ess$livecntr == 1] <- "Mere end 20 år"
+samlet_ess$livecntr_f[samlet_ess$livecntr == 2] <- "Mellem 11 og 20 år"
+samlet_ess$livecntr_f[samlet_ess$livecntr == 3] <- "Mellem 6 og 10 år"
+samlet_ess$livecntr_f[samlet_ess$livecntr %in% c(4,5)] <- "Mellem 0 og 5 år"
+```
+
+
+```{r, fig.width=7.5, height=2.5}
+png(file="../figures/analyse 2/antal angreb med nul.png", width = 7, height = 2, units = "in", res=500)
+med_nul <- ggplot(samlet_ess, aes(n_de_mu_im_pop))+
+  geom_density(color="black", fill="#de7065ff")+
+  scale_x_continuous(expand = c(0,0), breaks = seq(0,0.5, by = 0.05))+
+  scale_y_continuous(expand = c(0,0))+
+  xlab("")+
+  ylab("Denisitet")+
+  theme_classic()+
+  theme(text=element_text(family = "CM Roman"))+
+  theme(plot.title = element_text(family = "CM Roman", size = 13),
+        plot.subtitle = element_text(family = "CM Roman", size = 12),
+        axis.text = element_text(family = "CM Roman", size = 10),
+        axis.title = element_text(family = "CM Roman", size = 11))+
+  theme(legend.position = "none")+
+  theme(plot.margin = unit(c(6,0,6,0), "pt"))
+print(med_nul)
+dev.off()
+
+
+samlet_density <- samlet_ess%>%
+  filter(n_de_mu_im_pop !=0)%>%
+  filter(!is.na(n_de_mu_im_pop))
+
+png(file="../figures/analyse 2/antal angreb uden nul.png", width = 7, height = 2, units = "in", res=500)
+uden_nul <- ggplot(samlet_density, aes(n_de_mu_im_pop))+
+  geom_density(color="black", fill="#de7065ff")+
+  scale_x_continuous(expand = c(0,0), breaks = seq(0,0.5, by = 0.05))+
+  scale_y_continuous(expand = c(0,0))+
+  xlab("Antal døde i terrorangreb det forgående år pr. million indbygger")+
+  ylab("Denisitet")+
+  theme_classic()+
+  theme(text=element_text(family = "CM Roman"))+
+  theme(plot.title = element_text(family = "CM Roman", size = 13),
+        plot.subtitle = element_text(family = "CM Roman", size = 12),
+        axis.text = element_text(family = "CM Roman", size = 10),
+        axis.title = element_text(family = "CM Roman", size = 11))+
+  theme(legend.position = "none")+
+  theme(plot.margin = unit(c(6,0,6,0), "pt"))
+print(uden_nul)
+dev.off()
+```
+
+
+```{r, fig.width=7.5, height=2.5}
+png(file="../figures/analyse 2/antal angreb bar.png", width = 1, height = 4, units = "in", res=500)
+
+
+samlet_ess <- samlet_ess%>%
+  filter(!is.na(n_de_mu_im_pop))%>%
+  mutate(fill_a = angreb)
+
+bar <- ggplot(samlet_ess, aes(angreb, fill = fill_a))+
+  geom_bar(width = 0.95)+
+  scale_fill_manual(fill_a, values = c("Ingen angreb" = "#a65c85ff", "Angreb" = "#efe350ff"), labels = c("Ingen angreb" = "Ingen \nangreb", "Angreb" = "Angreb"))+
+  scale_y_continuous(expand = c(0,0), limits = c(0,5000))+
+  xlab("")+ 
+  ylab("Observationer")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+    theme(text=element_text(family = "CM Roman"))+
+  theme(plot.title = element_text(family = "CM Roman", size = 13),
+        plot.subtitle = element_text(family = "CM Roman", size = 12),
+        axis.text = element_text(family = "CM Roman", size = 10),
+        axis.title = element_text(family = "CM Roman", size = 11))+
+  theme(legend.position = "none")+
+  theme(plot.margin = unit(c(6,0,6,0), "pt"))
+
+print(bar)
+dev.off()
+```
+
+
+```{r, fig.width=7.5, height=2.5}
+library(patchwork)
+png(file="../figures/analyse 2/angreb.png", width = 7.5, height = 4, units = "in", res=500)
+plot_sam <-  ((med_nul / uden_nul) |  bar) + plot_layout(widths = c(7,1))
+plot_sam
+dev.off()
+plot_sam
+```
