@@ -1,0 +1,200 @@
+---
+title: "Analyse 2 - Model 2 - Linære regression"
+author: "Eva Tryde"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE, message=FALSE}
+library(tidyverse)
+library(ggpubr)
+library(effects)
+library(stargazer)
+library(knitr)
+library(ggplot2) 
+library(jtools)
+library(interplot)
+library(statisticalModeling)
+library(prediction)
+library(margins)
+library(psych)
+library(robustbase)
+library(extrafont)
+loadfonts()
+```
+
+
+```{r data, message=FALSE}
+ess <- read.csv("../../data/ess_treated.csv")
+auto  <- read.csv("../../data/auto_scale.csv")
+rtv_merge <- read_csv("../../../RTV trussel/RTV/data/rtv_merge.csv")
+```
+
+```{r, message=FALSE}
+rtv_merge <- rtv_merge %>%
+  rename(year = merge_year)%>%
+  filter(year >= 2002)%>%
+  dplyr::select(cntry, year, n_de_mu_im_pop, n_de_mu_im_3_pop)
+
+ess$year<- ess$int.year
+flip <- function(x){
+  6 - x
+}
+ess <- mutate_at(ess, .vars=c("livecntr"), flip)
+ess <- mutate_at(ess, .vars=c("mnrgtjb"), flip)
+
+ess$livecntr[ess$brncntr != 2] <- 0
+ess <- ess %>%
+  dplyr::filter(cntry %in% c(
+  "NO", "SE", "DK", "DE", "GB", "IT", "ES", "NL", "AT", "FR", "PT",
+  "FI", "GR", "CH", "IE", "BE", "LU", "IS"))%>%
+  filter(dikotom == "muslim")%>%
+  dplyr::select(essround, id, cntry, freehms, rlgdgr, year, income, educ.ba, female, age, livecntr)
+
+samlet_rtv <- left_join(ess, rtv_merge, by = c("cntry", "year"))
+
+auto <- auto %>%
+  dplyr::select(id, cntry, PVQ, essround)
+
+samlet_ess <- left_join(samlet_rtv, auto, by =c("id", "cntry", "essround"))
+samlet_ess$income[samlet_ess$income %in% c(11,12)] <- NA
+```
+
+
+```{r}
+rm(auto, ess, rtv_merge, samlet_rtv, flip)
+```
+
+```{r}
+samlet_ess$livecntr_f[samlet_ess$livecntr == 0] <- "Født i landet"
+samlet_ess$livecntr_f[samlet_ess$livecntr == 1] <- "Mere end 20 år"
+samlet_ess$livecntr_f[samlet_ess$livecntr == 2] <- "Mellem 11 og 20 år"
+samlet_ess$livecntr_f[samlet_ess$livecntr == 3] <- "Mellem 6 og 10 år"
+samlet_ess$livecntr_f[samlet_ess$livecntr %in% c(4,5)] <- "Mellem 0 og 5 år"
+
+samlet_ess$livecntr_f <- as.factor(samlet_ess$livecntr_f)
+levels(samlet_ess$livecntr_f)
+samlet_ess$livecntr_f = factor(samlet_ess$livecntr_f, levels=c("Mellem 0 og 5 år",  "Mellem 6 og 10 år", "Mellem 11 og 20 år", "Mere end 20 år", "Født i landet"))
+levels(samlet_ess$livecntr_f)
+```
+
+
+## samlet model  - nye med robuste standart fejl
+```{r}
+model_1_ny_trussel_ro <- lmrob(freehms ~ PVQ*n_de_mu_im_pop + cntry, data = samlet_ess, control = lmrob.control(k.max = 500, fast.s.large.n = Inf))
+model_1c_ny_trussel_ro <- lmrob(freehms ~ PVQ*n_de_mu_im_pop + rlgdgr + income + educ.ba + female + age + livecntr_f + cntry, data = samlet_ess, control = lmrob.control(k.max = 500,fast.s.large.n = Inf))
+stargazer(model_1_ny_trussel_ro, model_1c_ny_trussel_ro, type = "latex", single.row = FALSE)
+```
+
+
+
+```{r}
+start <- Sys.time()
+cdat_1 <- cplot(model_1_ny_trussel_ro, "n_de_mu_im_pop", "PVQ",
+              what = "effect", 
+              #xlim = c(0,10), 
+              #xvals = prediction::seq_range(0:10, n = 25),
+              draw = FALSE)
+
+saveRDS(cdat_1, file="../../figures/analyse 2/cdat_1.RDS")
+end <- Sys.time()
+
+time = end - start
+print(time)
+```
+
+
+```{r}
+png(file="../../figures/analyse 2/model 1 uden kontrolvariabler.png", width = 7.5, height = 4, units = "in", res=500)
+p_model_1_ny_trussel_ro <- ggplot(cdat_1, aes(x = xvals)) +   
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "grey70", alpha = 0.75) +
+  geom_line(aes(y = yvals), linetype = 1, size = 0.5) +
+  geom_line(aes(y = upper), linetype = 1, color = "grey70", alpha = 0.75) +
+  geom_line(aes(y = lower), linetype = 1, color = "grey70", alpha = 0.75) +
+  geom_hline(yintercept = 0, linetype = "dashed")+
+#SKALA OG FARVER  
+  #scale_y_continuous(expand = c(0,0), limits = c(-6,4)) +
+  #scale_x_continuous(expand = c(0,0), limits = c(0,10)) +
+  #geom_smooth(aes(y = yvals), method=lm, se=FALSE,fullrange=TRUE, linetype = 1, size = 0.5, col="black")+
+  coord_cartesian(ylim = c(-0.3,0.5), xlim = c(0,0.45), expand = FALSE)+
+
+#THEME  
+  theme_classic()+
+  xlab("Antal døde de forgående år (pr. 1. mio. indbygger)")+
+  ylab("Marginal effekt af autoritær prædisposition")+
+  labs(title = "Gennemsnitlig marginal effekt af interaktion på grad af intolerance ift. homoseksuelle", subtitle = "Uden kontrolvariabler")+
+  theme(text=element_text(family = "CM Roman"))+
+  theme(plot.title = element_text(family = "CM Roman", size = 13),
+        plot.subtitle = element_text(family = "CM Roman", size = 12),
+        axis.text = element_text(family = "CM Roman", size = 10),
+        axis.title = element_text(family = "CM Roman", size = 11))
+print(p_model_1_ny_trussel_ro)
+
+dev.off()
+
+```
+
+```{r}
+model_1c_ny_trussel_ro_df <- samlet_ess%>%
+  dplyr::select(freehms, PVQ, n_de_mu_im_pop, rlgdgr, income, educ.ba, female, age, livecntr_f, cntry)
+model_1c_ny_trussel_ro_df$livecntr_f <- as.factor(model_1c_ny_trussel_ro_df$livecntr_f)
+model_1c_ny_trussel_ro_df <- drop_na(model_1c_ny_trussel_ro_df)
+model_1c_ny_trussel_ro <- lmrob(freehms ~ PVQ*n_de_mu_im_pop + rlgdgr + income + educ.ba + female + age + livecntr_f + cntry, data = samlet_ess, control = lmrob.control(k.max = 500,fast.s.large.n = Inf))
+levels(model_1c_ny_trussel_ro_df$livecntr_f)
+```
+
+
+
+```{r}
+start <- Sys.time()
+cdat_1c <- cplot(model_1c_ny_trussel_ro, "n_de_mu_im_pop", "PVQ",
+              what = "effect", 
+              #xlim = c(0,10), 
+              #xvals = prediction::seq_range(0:10, n = 25),
+              draw = FALSE)
+
+saveRDS(cdat_1c, file="../../figures/analyse 2/cdat_1c.RDS")
+end <- Sys.time()
+time = end - start
+print(time)
+```
+
+
+
+
+```{r}
+png(file="../../figures/analyse 2/model 1 med kontrolvariabler.png", width = 7.5, height = 4, units = "in", res=500)
+
+p_model_1c_ny_trussel_ro <- ggplot(cdat_1c, aes(x = xvals)) +   
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "grey70", alpha = 0.75) +
+  geom_line(aes(y = yvals), linetype = 1, size = 0.5) +
+  geom_line(aes(y = upper), linetype = 1, color = "grey70", alpha = 0.75) +
+  geom_line(aes(y = lower), linetype = 1, color = "grey70", alpha = 0.75) +
+  geom_hline(yintercept = 0, linetype = "dashed")+
+#SKALA OG FARVER  
+  #scale_y_continuous(expand = c(0,0), limits = c(-6,4)) +
+  #scale_x_continuous(expand = c(0,0), limits = c(0,10)) +
+  #geom_smooth(aes(y = yvals), method=lm, se=FALSE,fullrange=TRUE, linetype = 1, size = 0.5, col="black")+
+  coord_cartesian(ylim = c(-0.3,0.5), xlim = c(0,0.45), expand = FALSE)+
+
+#THEME  
+  theme_classic()+
+  xlab("Antal døde de forgående år (pr. 1. mio. indbygger)")+
+  ylab("Marginal effekt af autoritær prædisposition")+
+  labs(title = "Gennemsnitlig marginal effekt af interaktion på grad af intolerance ift. homoseksuelle", subtitle = "Med kontrolvariabler")+
+  theme(text=element_text(family = "CM Roman"))+
+  theme(plot.title = element_text(family = "CM Roman", size = 13),
+        plot.subtitle = element_text(family = "CM Roman", size = 12),
+        axis.text = element_text(family = "CM Roman", size = 10),
+        axis.title = element_text(family = "CM Roman", size = 11))
+print(p_model_1c_ny_trussel_ro)
+
+dev.off()
+
+```
+
+```{r}
+
+```
+
